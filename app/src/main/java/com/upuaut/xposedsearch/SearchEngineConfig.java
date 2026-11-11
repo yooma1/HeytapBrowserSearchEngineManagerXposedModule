@@ -23,6 +23,9 @@ public class SearchEngineConfig {
     public String conflictBuiltinName;     // 冲突的内置引擎名称
     public String conflictBuiltinSearchUrl; // 冲突的内置引擎 URL
 
+    /** 列表内排序位置（越小越靠前），由用户拖动决定。 */
+    public int order;
+
     public SearchEngineConfig() {
     }
 

@@ -49,12 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upuaut.xposedsearch.HotSiteConfig
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.extra.SuperDialog
-import top.yukonga.miuix.kmp.extra.SuperSwitch
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.upuaut.xposedsearch.coui.*
 
 @Composable
 fun HotSitesScreen(
@@ -301,59 +296,60 @@ fun HotSitesScreen(
                 }
             }
         }
-    }
 
-    // Dialogs 代码保持不变...
-    AddHotSiteDialog(
-        show = showAddDialog,
-        onDismiss = { viewModel.showAddDialog(false) },
-        onConfirm = { name, url, iconUrl ->
-            val success = viewModel.addSite(name, url, iconUrl)
-            if (success) {
-                viewModel.showAddDialog(false)
-            } else {
-                Toast.makeText(context, "URL已存在", Toast.LENGTH_SHORT).show()
-            }
-        }
-    )
-
-    uiState.editingSite?.let { site ->
-        EditHotSiteDialog(
-            show = showEditDialog,
-            site = site,
-            onDismiss = { viewModel.showEditDialog(null) },
+        // OverlayDialog 依赖 Scaffold 注入的宿主 CompositionLocal，
+        // 必须写在 Scaffold 的 content 作用域内，否则 show=true 也不渲染。
+        AddHotSiteDialog(
+            show = showAddDialog,
+            onDismiss = { viewModel.showAddDialog(false) },
             onConfirm = { name, url, iconUrl ->
-                viewModel.updateSite(site.id, name, url, iconUrl, site.enabled)
-                viewModel.showEditDialog(null)
+                val success = viewModel.addSite(name, url, iconUrl)
+                if (success) {
+                    viewModel.showAddDialog(false)
+                } else {
+                    Toast.makeText(context, "URL已存在", Toast.LENGTH_SHORT).show()
+                }
             }
         )
-    }
 
-    uiState.deletingSite?.let { site ->
-        DeleteHotSiteDialog(
-            show = showDeleteDialog,
-            siteName = site.name,
-            onDismiss = { viewModel.showDeleteDialog(null) },
-            onConfirm = {
-                viewModel.deleteSite(site.id)
-                viewModel.showDeleteDialog(null)
-            }
-        )
-    }
-
-    ResetToDefaultDialog(
-        show = showResetDialog,
-        onDismiss = { viewModel.showResetDialog(false) },
-        onConfirm = {
-            viewModel.resetToDefault()
-            Toast.makeText(context, "已恢复默认", Toast.LENGTH_SHORT).show()
-            viewModel.showResetDialog(false)
+        uiState.editingSite?.let { site ->
+            EditHotSiteDialog(
+                show = showEditDialog,
+                site = site,
+                onDismiss = { viewModel.showEditDialog(null) },
+                onConfirm = { name, url, iconUrl ->
+                    viewModel.updateSite(site.id, name, url, iconUrl, site.enabled)
+                    viewModel.showEditDialog(null)
+                }
+            )
         }
-    )
+
+        uiState.deletingSite?.let { site ->
+            DeleteHotSiteDialog(
+                show = showDeleteDialog,
+                siteName = site.name,
+                onDismiss = { viewModel.showDeleteDialog(null) },
+                onConfirm = {
+                    viewModel.deleteSite(site.id)
+                    viewModel.showDeleteDialog(null)
+                }
+            )
+        }
+
+        ResetToDefaultDialog(
+            show = showResetDialog,
+            onDismiss = { viewModel.showResetDialog(false) },
+            onConfirm = {
+                viewModel.resetToDefault()
+                Toast.makeText(context, "已恢复默认", Toast.LENGTH_SHORT).show()
+                viewModel.showResetDialog(false)
+            }
+        )
+    }
 }
 
 // 辅助组件
-private val CardPadding = 20.dp
+private val CardPadding = 16.dp
 private val ActionButtonColor = Color(0xFFBDBDBD)
 
 @Composable
@@ -364,21 +360,15 @@ fun ModuleEnableCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(CardPadding)
-        ) {
-            SuperSwitch(
-                title = "启用热门网站管理",
-                summary = "自定义浏览器首页热门网站",
-                checked = isEnabled,
-                onCheckedChange = onEnabledChange,
-                insideMargin = PaddingValues(0.dp)
-            )
-        }
+        SuperSwitch(
+            title = "启用热门网站管理",
+            summary = "开启后自定义浏览器主页宫格网站",
+            checked = isEnabled,
+            onCheckedChange = onEnabledChange,
+            cardListPosition = io.github.suqi8.coui.kmp.basic.CardListPosition.Full
+        )
     }
 }
 
@@ -407,7 +397,7 @@ fun DraggableHotSiteItem(
 
     // 【关键修改4】使用 isHeld 控制视觉动画
     val scale by animateFloatAsState(
-        targetValue = if (isHeld) 1.05f else 1f,
+        targetValue = if (isHeld) 1.04f else 1f,
         animationSpec = springSpec,
         label = "scale"
     )
@@ -424,7 +414,7 @@ fun DraggableHotSiteItem(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = 16.dp)
             .onSizeChanged { onSizeChanged(it.height) }
             // zIndex 必须依赖 isDragging，因为即使松手了（isHeld=false），在回弹过程中它仍需在最上层
             .zIndex(if (isDragging) 10f else 0f)
@@ -434,7 +424,7 @@ fun DraggableHotSiteItem(
                 scaleY = scale
                 shadowElevation = with(density) { elevation.toPx() }
 
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(16.dp)
                 clip = false
             }
     ) {
@@ -471,12 +461,28 @@ fun DraggableHotSiteItem(
                 )
             }
 
-            // 网站名称
-            Text(
-                text = site.name,
-                color = MiuixTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
+            // 网站名称 + URL 副标题（单行省略，不挤压右侧按钮与边框）
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = site.name,
+                    style = MiuixTheme.textStyles.body1,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+                if (site.url.isNotBlank()) {
+                    Text(
+                        text = site.url,
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1
+                    )
+                }
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDelete) {
@@ -548,7 +554,7 @@ fun AddHotSiteDialog(
                 onValueChange = { url = it; urlError = null },
                 label = "网站 URL",
                 maxLines = 2,
-                modifier = Modifier.fillMaxWidth().height(68.dp),
+                singleLine = false, modifier = Modifier.fillMaxWidth(),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
@@ -561,7 +567,7 @@ fun AddHotSiteDialog(
                 onValueChange = { iconUrl = it },
                 label = "图标 URL (可选)",
                 maxLines = 2,
-                modifier = Modifier.fillMaxWidth().height(68.dp),
+                singleLine = false, modifier = Modifier.fillMaxWidth(),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )
@@ -626,7 +632,7 @@ fun EditHotSiteDialog(
                 onValueChange = { url = it; urlError = null },
                 label = "网站 URL",
                 maxLines = 2,
-                modifier = Modifier.fillMaxWidth().height(68.dp),
+                singleLine = false, modifier = Modifier.fillMaxWidth(),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
@@ -639,7 +645,7 @@ fun EditHotSiteDialog(
                 onValueChange = { iconUrl = it },
                 label = "图标 URL (可选)",
                 maxLines = 2,
-                modifier = Modifier.fillMaxWidth().height(68.dp),
+                singleLine = false, modifier = Modifier.fillMaxWidth(),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )

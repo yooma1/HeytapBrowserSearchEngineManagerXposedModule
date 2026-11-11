@@ -12,8 +12,8 @@ import androidx.compose.runtime.*
 import com.upuaut.xposedsearch.ui.HomeScreen
 import com.upuaut.xposedsearch.ui.MainScreen
 import com.upuaut.xposedsearch.ui.HotSitesScreen
+import com.upuaut.xposedsearch.coui.MiuixTheme
 import com.upuaut.xposedsearch.ui.DarkWordScreen
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -39,6 +39,9 @@ sealed class Screen {
 @Composable
 fun MainApp() {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
+    // 首页滚动位置：进二级页再返回时必须回到原来的位置，
+    // 否则 Compose 会重建 LazyColumn 直接跳回顶部（用户感知为"回到了软件首页"）。
+    val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     BackHandler(enabled = currentScreen != Screen.Home) {
         currentScreen = Screen.Home
@@ -71,6 +74,7 @@ fun MainApp() {
     ) { screen ->
         when (screen) {
             Screen.Home -> HomeScreen(
+                listState = homeListState,
                 onNavigateToEngines = { currentScreen = Screen.SearchEngines },
                 onNavigateToHotSites = { currentScreen = Screen.HotSites },
                 onNavigateToDarkWord = { currentScreen = Screen.DarkWord }

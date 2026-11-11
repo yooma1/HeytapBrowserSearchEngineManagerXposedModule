@@ -2,10 +2,24 @@
 package com.upuaut.xposedsearch.ui
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -14,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.SystemUpdate
@@ -21,22 +36,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upuaut.xposedsearch.SearchEngineConfig
-import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.extra.SuperDialog
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.upuaut.xposedsearch.coui.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun MainScreen(
@@ -46,6 +63,8 @@ fun MainScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -64,6 +83,30 @@ fun MainScreen(
     }
     val customEngines = remember(uiState.engines) {
         uiState.engines.filter { !it.isBuiltin }
+    }
+
+    // 与热门网站完全一致的拖拽排序模型（编辑/完成、Menu 拖动把手、弹簧缩放与回弹）
+    var isEditMode by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val builtinList = remember { mutableStateListOf<SearchEngineConfig>() }
+    val customList = remember { mutableStateListOf<SearchEngineConfig>() }
+
+    var draggingKey by remember { mutableStateOf<String?>(null) }
+    var heldKey by remember { mutableStateOf<String?>(null) }
+    val dragOffset = remember { Animatable(0f) }
+    var itemHeightPx by remember { mutableIntStateOf(with(density) { (72 + 12).dp.roundToPx() }) }
+
+    LaunchedEffect(uiState.engines) {
+        if (draggingKey == null) {
+            builtinList.clear()
+            builtinList.addAll(builtinEngines)
+            customList.clear()
+            customList.addAll(customEngines)
+        }
+    }
+
+    fun commitOrder() {
+        viewModel.reorderEngines(builtinList.map { it.key } + customList.map { it.key })
     }
 
     val showAddDialog = remember { mutableStateOf(uiState.showAddDialog) }
@@ -110,16 +153,17 @@ fun MainScreen(
         }
     ) { innerPadding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .scrollEndHaptic()
                 .overScrollVertical()
                 .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding() + 12.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 80.dp
+                top = innerPadding.calculateTopPadding() + 8.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 88.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             overscrollEffect = null
         ) {
             if (uiState.engines.isEmpty()) {
@@ -138,22 +182,49 @@ fun MainScreen(
                 }
             }
 
-            if (builtinEngines.isNotEmpty()) {
+            if (builtinList.isNotEmpty()) {
                 item {
-                    SmallTitle(text = "浏览器内置引擎")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SmallTitle(text = "浏览器内置引擎")
+                        Text(
+                            text = if (isEditMode) "完成" else "编辑",
+                            color = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    if (isEditMode) commitOrder()
+                                    isEditMode = !isEditMode
+                                }
+                                .padding(horizontal = 24.dp)
+                        )
+                    }
                 }
-                items(builtinEngines, key = { it.key }) { engine ->
-                    EngineItem(
+                itemsIndexed(
+                    items = builtinList,
+                    key = { _, e -> e.key }
+                ) { _, engine ->
+                    val isDragging = draggingKey == engine.key
+                    val isHeld = heldKey == engine.key
+
+                    DraggableEngineItem(
                         engine = engine,
+                        isEditMode = isEditMode,
+                        isDragging = isDragging,
+                        isHeld = isHeld,
+                        dragOffset = if (isDragging) dragOffset.value else 0f,
                         onEnabledChange = { enabled ->
                             viewModel.updateEngineEnabled(engine.key, enabled)
                         },
                         onEdit = { viewModel.showEditDialog(engine) },
                         onDelete = null,
                         onReset = if (engine.canReset()) {
-                            {
-                                viewModel.resetEngine(engine.key)
-                            }
+                            { viewModel.resetEngine(engine.key) }
                         } else null,
                         onUpdate = if (engine.hasPendingUpdate()) {
                             { viewModel.showUpdateDialog(engine) }
@@ -161,18 +232,96 @@ fun MainScreen(
                         onRemoved = if (engine.isRemovedFromBrowser) {
                             { viewModel.showRemovedDialog(engine) }
                         } else null,
-                        onConflict = null
+                        onConflict = null,
+                        onDragStart = {
+                            draggingKey = engine.key
+                            heldKey = engine.key
+                            scope.launch { dragOffset.snapTo(0f) }
+                        },
+                        onDrag = { delta ->
+                            scope.launch {
+                                val currentOffset = dragOffset.value + delta
+                                dragOffset.snapTo(currentOffset)
+
+                                val currentIndex = builtinList.indexOfFirst { it.key == engine.key }
+                                if (currentIndex == -1) return@launch
+
+                                val threshold = itemHeightPx.toFloat()
+                                if (currentOffset > threshold) {
+                                    if (currentIndex < builtinList.lastIndex) {
+                                        val item = builtinList.removeAt(currentIndex)
+                                        builtinList.add(currentIndex + 1, item)
+                                        dragOffset.snapTo(currentOffset - threshold)
+                                    }
+                                } else if (currentOffset < -threshold) {
+                                    if (currentIndex > 0) {
+                                        val item = builtinList.removeAt(currentIndex)
+                                        builtinList.add(currentIndex - 1, item)
+                                        dragOffset.snapTo(currentOffset + threshold)
+                                    }
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            heldKey = null
+                            scope.launch {
+                                dragOffset.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                                draggingKey = null
+                            }
+                        },
+                        onSizeChanged = { height ->
+                            val spacingPx = with(density) { 12.dp.roundToPx() }
+                            itemHeightPx = height + spacingPx
+                        },
+                        modifier = if (isDragging) Modifier else Modifier.animateItem()
                     )
                 }
             }
 
-            if (customEngines.isNotEmpty()) {
+            if (customList.isNotEmpty()) {
                 item {
-                    SmallTitle(text = "自定义引擎")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SmallTitle(text = "自定义引擎")
+                        if (builtinList.isEmpty()) {
+                            Text(
+                                text = if (isEditMode) "完成" else "编辑",
+                                color = MiuixTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        if (isEditMode) commitOrder()
+                                        isEditMode = !isEditMode
+                                    }
+                                    .padding(horizontal = 24.dp)
+                            )
+                        }
+                    }
                 }
-                items(customEngines, key = { it.key }) { engine ->
-                    EngineItem(
+                itemsIndexed(
+                    items = customList,
+                    key = { _, e -> e.key }
+                ) { _, engine ->
+                    val isDragging = draggingKey == engine.key
+                    val isHeld = heldKey == engine.key
+
+                    DraggableEngineItem(
                         engine = engine,
+                        isEditMode = isEditMode,
+                        isDragging = isDragging,
+                        isHeld = isHeld,
+                        dragOffset = if (isDragging) dragOffset.value else 0f,
                         onEnabledChange = { enabled ->
                             viewModel.updateEngineEnabled(engine.key, enabled)
                         },
@@ -183,140 +332,228 @@ fun MainScreen(
                         onRemoved = null,
                         onConflict = if (engine.hasBuiltinConflict()) {
                             { viewModel.showConflictDialog(engine) }
-                        } else null
+                        } else null,
+                        onDragStart = {
+                            draggingKey = engine.key
+                            heldKey = engine.key
+                            scope.launch { dragOffset.snapTo(0f) }
+                        },
+                        onDrag = { delta ->
+                            scope.launch {
+                                val currentOffset = dragOffset.value + delta
+                                dragOffset.snapTo(currentOffset)
+
+                                val currentIndex = customList.indexOfFirst { it.key == engine.key }
+                                if (currentIndex == -1) return@launch
+
+                                val threshold = itemHeightPx.toFloat()
+                                if (currentOffset > threshold) {
+                                    if (currentIndex < customList.lastIndex) {
+                                        val item = customList.removeAt(currentIndex)
+                                        customList.add(currentIndex + 1, item)
+                                        dragOffset.snapTo(currentOffset - threshold)
+                                    }
+                                } else if (currentOffset < -threshold) {
+                                    if (currentIndex > 0) {
+                                        val item = customList.removeAt(currentIndex)
+                                        customList.add(currentIndex - 1, item)
+                                        dragOffset.snapTo(currentOffset + threshold)
+                                    }
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            heldKey = null
+                            scope.launch {
+                                dragOffset.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                                draggingKey = null
+                            }
+                        },
+                        onSizeChanged = { height ->
+                            val spacingPx = with(density) { 12.dp.roundToPx() }
+                            itemHeightPx = height + spacingPx
+                        },
+                        modifier = if (isDragging) Modifier else Modifier.animateItem()
                     )
                 }
             }
         }
-    }
 
-    // 对话框
-    AddEngineDialog(
-        show = showAddDialog,
-        onDismiss = { viewModel.showAddDialog(false) },
-        onConfirm = { key, name, url ->
-            val success = viewModel.addCustomEngine(key, name, url)
-            if (success) {
-                viewModel.showAddDialog(false)
-            } else {
-                Toast.makeText(context, "标识符已存在", Toast.LENGTH_SHORT).show()
-            }
-        }
-    )
-
-    uiState.editingEngine?.let { engine ->
-        EditEngineDialog(
-            show = showEditDialog,
-            engine = engine,
-            onDismiss = { viewModel.showEditDialog(null) },
-            onConfirm = { newKey, name, url ->
-                if (engine.isBuiltin) {
-                    viewModel.updateEngine(engine.key, name, url, engine.enabled)
-                    viewModel.showEditDialog(null)
+        // OverlayDialog 依赖 Scaffold 注入的宿主 CompositionLocal，写在外层不会渲染。
+        AddEngineDialog(
+            show = showAddDialog,
+            onDismiss = { viewModel.showAddDialog(false) },
+            onConfirm = { key, name, url ->
+                val success = viewModel.addCustomEngine(key, name, url)
+                if (success) {
+                    viewModel.showAddDialog(false)
                 } else {
-                    val success = viewModel.updateCustomEngine(engine.key, newKey, name, url, engine.enabled)
-                    if (success) {
+                    Toast.makeText(context, "标识符已存在", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+
+        uiState.editingEngine?.let { engine ->
+            EditEngineDialog(
+                show = showEditDialog,
+                engine = engine,
+                onDismiss = { viewModel.showEditDialog(null) },
+                onConfirm = { newKey, name, url ->
+                    if (engine.isBuiltin) {
+                        viewModel.updateEngine(engine.key, name, url, engine.enabled)
                         viewModel.showEditDialog(null)
                     } else {
-                        Toast.makeText(context, "标识符已存在", Toast.LENGTH_SHORT).show()
+                        val success = viewModel.updateCustomEngine(engine.key, newKey, name, url, engine.enabled)
+                        if (success) {
+                            viewModel.showEditDialog(null)
+                        } else {
+                            Toast.makeText(context, "标识符已存在", Toast.LENGTH_SHORT).show()
+                        }
                     }
+                },
+                onKeyConflict = {
+                    Toast.makeText(context, "标识符已存在", Toast.LENGTH_SHORT).show()
                 }
-            },
-            onKeyConflict = {
-                Toast.makeText(context, "标识符已存在", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
+            )
+        }
 
-    uiState.deletingEngine?.let { engine ->
-        DeleteConfirmDialog(
-            show = showDeleteDialog,
-            engineName = engine.name,
-            onDismiss = { viewModel.showDeleteDialog(null) },
-            onConfirm = {
-                viewModel.deleteEngine(engine.key)
-                viewModel.showDeleteDialog(null)
-            }
-        )
-    }
-
-    uiState.updatingEngine?.let { engine ->
-        UpdateAvailableDialog(
-            show = showUpdateDialog,
-            engine = engine,
-            onDismiss = { viewModel.showUpdateDialog(null) },
-            onApply = {
-                viewModel.applyPendingUpdate(engine.key)
-                Toast.makeText(context, "已更新", Toast.LENGTH_SHORT).show()
-                viewModel.showUpdateDialog(null)
-            },
-            onIgnore = {
-                viewModel.ignorePendingUpdate(engine.key)
-                Toast.makeText(context, "已忽略更新", Toast.LENGTH_SHORT).show()
-                viewModel.showUpdateDialog(null)
-            }
-        )
-    }
-
-    uiState.removedEngine?.let { engine ->
-        EngineRemovedDialog(
-            show = showRemovedDialog,
-            engine = engine,
-            onDismiss = { viewModel.showRemovedDialog(null) },
-            onConvertToCustom = {
-                viewModel.convertToCustomEngine(engine.key)
-                Toast.makeText(context, "已转为自定义引擎", Toast.LENGTH_SHORT).show()
-                viewModel.showRemovedDialog(null)
-            },
-            onDelete = {
-                viewModel.deleteEngine(engine.key)
-                Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
-                viewModel.showRemovedDialog(null)
-            }
-        )
-    }
-
-    uiState.conflictEngine?.let { engine ->
-        BuiltinConflictDialog(
-            show = showConflictDialog,
-            engine = engine,
-            onDismiss = { viewModel.showConflictDialog(null) },
-            onConvertToBuiltin = {
-                viewModel.convertCustomToBuiltin(engine.key)
-                Toast.makeText(context, "已转为内置引擎", Toast.LENGTH_SHORT).show()
-                viewModel.showConflictDialog(null)
-            },
-            onCreateCopy = {
-                val newKey = viewModel.createCustomEngineCopy(engine.key)
-                if (newKey != null) {
-                    Toast.makeText(context, "已创建副本: $newKey", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "创建副本失败", Toast.LENGTH_SHORT).show()
+        uiState.deletingEngine?.let { engine ->
+            DeleteConfirmDialog(
+                show = showDeleteDialog,
+                engineName = engine.name,
+                onDismiss = { viewModel.showDeleteDialog(null) },
+                onConfirm = {
+                    viewModel.deleteEngine(engine.key)
+                    viewModel.showDeleteDialog(null)
                 }
-                viewModel.showConflictDialog(null)
-            }
-        )
+            )
+        }
+
+        uiState.updatingEngine?.let { engine ->
+            UpdateAvailableDialog(
+                show = showUpdateDialog,
+                engine = engine,
+                onDismiss = { viewModel.showUpdateDialog(null) },
+                onApply = {
+                    viewModel.applyPendingUpdate(engine.key)
+                    Toast.makeText(context, "已更新", Toast.LENGTH_SHORT).show()
+                    viewModel.showUpdateDialog(null)
+                },
+                onIgnore = {
+                    viewModel.ignorePendingUpdate(engine.key)
+                    Toast.makeText(context, "已忽略更新", Toast.LENGTH_SHORT).show()
+                    viewModel.showUpdateDialog(null)
+                }
+            )
+        }
+
+        uiState.removedEngine?.let { engine ->
+            EngineRemovedDialog(
+                show = showRemovedDialog,
+                engine = engine,
+                onDismiss = { viewModel.showRemovedDialog(null) },
+                onConvertToCustom = {
+                    viewModel.convertToCustomEngine(engine.key)
+                    Toast.makeText(context, "已转为自定义引擎", Toast.LENGTH_SHORT).show()
+                    viewModel.showRemovedDialog(null)
+                },
+                onDelete = {
+                    viewModel.deleteEngine(engine.key)
+                    Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
+                    viewModel.showRemovedDialog(null)
+                }
+            )
+        }
+
+        uiState.conflictEngine?.let { engine ->
+            BuiltinConflictDialog(
+                show = showConflictDialog,
+                engine = engine,
+                onDismiss = { viewModel.showConflictDialog(null) },
+                onConvertToBuiltin = {
+                    viewModel.convertCustomToBuiltin(engine.key)
+                    Toast.makeText(context, "已转为内置引擎", Toast.LENGTH_SHORT).show()
+                    viewModel.showConflictDialog(null)
+                },
+                onCreateCopy = {
+                    val newKey = viewModel.createCustomEngineCopy(engine.key)
+                    if (newKey != null) {
+                        Toast.makeText(context, "已创建副本: $newKey", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "创建副本失败", Toast.LENGTH_SHORT).show()
+                    }
+                    viewModel.showConflictDialog(null)
+                }
+            )
+        }
     }
 }
 
-private val CardPadding = 20.dp
+private val CardPadding = 16.dp
 private val ActionButtonColor = Color(0xFFBDBDBD)
 
 @Composable
-fun EngineItem(
+fun DraggableEngineItem(
     engine: SearchEngineConfig,
+    isEditMode: Boolean,
+    isDragging: Boolean,
+    isHeld: Boolean,
+    dragOffset: Float,
     onEnabledChange: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: (() -> Unit)?,
     onReset: (() -> Unit)?,
     onUpdate: (() -> Unit)?,
     onRemoved: (() -> Unit)?,
-    onConflict: (() -> Unit)?
+    onConflict: (() -> Unit)?,
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onSizeChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
+
+    val springSpec = spring<Float>(
+        dampingRatio = Spring.DampingRatioLowBouncy,
+        stiffness = Spring.StiffnessMediumLow
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isHeld) 1.04f else 1f,
+        animationSpec = springSpec,
+        label = "scale"
+    )
+
+    val elevation by animateDpAsState(
+        targetValue = if (isHeld) 8.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "elevation"
+    )
+
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = 16.dp)
+            .onSizeChanged { onSizeChanged(it.height) }
+            .zIndex(if (isDragging) 10f else 0f)
+            .graphicsLayer {
+                translationY = dragOffset
+                scaleX = scale
+                scaleY = scale
+                shadowElevation = with(density) { elevation.toPx() }
+                shape = RoundedCornerShape(16.dp)
+                clip = false
+            }
     ) {
         Row(
             modifier = Modifier
@@ -325,10 +562,53 @@ fun EngineItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = engine.name,
-                color = MiuixTheme.colorScheme.onSurface
-            )
+            // 拖动把手（与热门网站完全一致的滑入动效与手势）
+            AnimatedVisibility(
+                visible = isEditMode,
+                enter = fadeIn() + expandHorizontally(),
+                exit = fadeOut() + shrinkHorizontally()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "拖动排序",
+                    tint = ActionButtonColor,
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { onDragStart() },
+                                onDragEnd = { onDragEnd() },
+                                onDragCancel = { onDragEnd() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    onDrag(dragAmount.y)
+                                }
+                            )
+                        }
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = engine.name,
+                    style = MiuixTheme.textStyles.body1,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+                if (!engine.searchUrl.isNullOrBlank()) {
+                    Text(
+                        text = engine.searchUrl!!,
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1
+                    )
+                }
+            }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically
@@ -639,8 +919,9 @@ fun AddEngineDialog(
                     urlError = null
                 },
                 label = "搜索 URL · {searchTerms}",
-                maxLines = 2,
-                modifier = Modifier.fillMaxWidth().height(68.dp),
+                singleLine = false,
+                maxLines = 3,
+                modifier = Modifier.fillMaxWidth(),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )
@@ -777,7 +1058,7 @@ fun EditEngineDialog(
                 onValueChange = { url = it },
                 label = "搜索 URL",
                 maxLines = 2,
-                modifier = Modifier.fillMaxWidth().height(68.dp),
+                singleLine = false, modifier = Modifier.fillMaxWidth(),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )

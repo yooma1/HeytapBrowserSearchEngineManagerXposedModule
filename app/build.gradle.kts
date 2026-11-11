@@ -1,12 +1,17 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
 android {
     namespace = "com.upuaut.xposedsearch"
-    compileSdk = 35
+    compileSdk = 37
 
     lint {
         disable += "NullSafeMutableLiveData"
@@ -15,11 +20,9 @@ android {
     defaultConfig {
         applicationId = "com.upuaut.xposedsearch"
         minSdk = 33
-        targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        targetSdk = 37
+        versionCode = 22
+        versionName = "2.0.2-coui"
     }
 
     buildTypes {
@@ -32,45 +35,34 @@ android {
         }
     }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/*.kotlin_module"
+        }
     }
 }
 
 dependencies {
-    implementation(libs.animation)
-    compileOnly("de.robv.android.xposed:api:82")
+    compileOnly(files("libs/api-82.jar"))
 
-    // Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    // COUI 1.1.0 = ColorOS 17 设计语言（Compose Multiplatform），替换 miuix
+    implementation(libs.coui.ui)
+    implementation(libs.coui.core)
+    implementation(libs.coui.squircle)
+    // coui-ui 依赖 org.jetbrains.compose.foundation 1.11.1，本地缓存为 1.12.0，显式钉死
+    implementation(libs.compose.foundation)
 
-    // Miuix
-    implementation(libs.miuix)
+    implementation(libs.material.icons.extended)
+    implementation(libs.activity.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-    implementation(libs.appcompat)
-    implementation(libs.material)
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.ext.junit)
-    androidTestImplementation(libs.espresso.core)
+    // activity-compose 1.13.0 传递依赖 navigationevent:1.0.0，本地仅有 1.1.2；显式提升避免离线解析失败
+    implementation("androidx.navigationevent:navigationevent:1.1.2")
+    implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
 }

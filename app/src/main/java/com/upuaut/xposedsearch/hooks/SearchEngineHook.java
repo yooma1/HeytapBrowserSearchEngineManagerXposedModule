@@ -90,24 +90,21 @@ public class SearchEngineHook {
                     lpparam.classLoader
             );
 
-            // Hook n0 (refreshEngineList)
-            XposedHelpers.findAndHookMethod(defaultSearchEnginesClass, "n0", List.class, boolean.class, boolean.class, boolean.class, new XC_MethodHook() {
+            XC_MethodHook refreshHook = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     processEngineList(param, 0);
                 }
-            });
+            };
 
-            // Hook o (getEngineList)
-            XposedHelpers.findAndHookMethod(defaultSearchEnginesClass, "o", boolean.class, new XC_MethodHook() {
+            XC_MethodHook getListHook = new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     processEngineList(param, -1);
                 }
-            });
+            };
 
-            // Hook v (getEngineByKey)
-            XposedHelpers.findAndHookMethod(defaultSearchEnginesClass, "v", String.class, new XC_MethodHook() {
+            XC_MethodHook getByKeyHook = new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     String requestedKey = (String) param.args[0];
@@ -144,7 +141,61 @@ public class SearchEngineHook {
                         resolveMappings(result);
                     }
                 }
-            });
+            };
+
+            // Dynamically hook compatible methods across old and new Browser versions (including v40.10.25.2)
+            for (Method m : defaultSearchEnginesClass.getDeclaredMethods()) {
+                Class<?>[] pTypes = m.getParameterTypes();
+                Class<?> rType = m.getReturnType();
+                String mName = m.getName();
+
+                // 1) refreshEngineList: (List, boolean, boolean, boolean) [n0 / o0] or t0(List)
+                if (pTypes.length == 4 && pTypes[0] == List.class
+                        && pTypes[1] == boolean.class && pTypes[2] == boolean.class && pTypes[3] == boolean.class) {
+                    XposedBridge.hookMethod(m, refreshHook);
+                    XposedBridge.log("[" + TAG + "] Hooked refreshEngineList(4): " + mName);
+                } else if (pTypes.length == 1 && pTypes[0] == List.class && rType == void.class
+                        && ("t0".equals(mName) || "s0".equals(mName))) {
+                    XposedBridge.hookMethod(m, refreshHook);
+                    XposedBridge.log("[" + TAG + "] Hooked refreshEngineList(1): " + mName);
+                }
+
+                // 2) getEngineList: (boolean) -> List [o / k] or () -> List [M]
+                if (pTypes.length == 1 && pTypes[0] == boolean.class && List.class.isAssignableFrom(rType)) {
+                    XposedBridge.hookMethod(m, getListHook);
+                    XposedBridge.log("[" + TAG + "] Hooked getEngineList(boolean): " + mName);
+                } else if (pTypes.length == 0 && List.class.isAssignableFrom(rType) && "M".equals(mName)) {
+                    XposedBridge.hookMethod(m, getListHook);
+                    XposedBridge.log("[" + TAG + "] Hooked getEngineList(): " + mName);
+                }
+
+                // 3) getEngineByKey: (String) -> EngineInterface [v / r / u]
+                if (pTypes.length == 1 && pTypes[0] == String.class
+                        && !rType.isPrimitive() && rType != String.class && rType != Object.class
+                        && !List.class.isAssignableFrom(rType)) {
+                    XposedBridge.hookMethod(m, getByKeyHook);
+                    XposedBridge.log("[" + TAG + "] Hooked getEngineByKey(String): " + mName);
+                }
+
+                // 4) Cloud config filter: w0(byte[], boolean)
+                if (pTypes.length == 2 && pTypes[0] == byte[].class && pTypes[1] == boolean.class && rType == boolean.class) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (getContextOrFallback() != null) {
+                                com.upuaut.xposedsearch.BrowserOptPrefsCache.refresh(appContext);
+                                if (com.upuaut.xposedsearch.BrowserOptPrefsCache.isFilterCloudEngineConfig()) {
+                                    boolean isNewSource = (Boolean) param.args[1];
+                                    if (isNewSource) {
+                                        XposedBridge.log("[" + TAG + "] Filtered cloud search engine config update");
+                                        param.setResult(false);
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
 
         } catch (Throwable t) {
             XposedBridge.log("[" + TAG + "] Failed to hook DefaultSearchEngines: " + t.getMessage());
@@ -595,7 +646,7 @@ public class SearchEngineHook {
 
     private List<Object> filterEngineList(List<Object> engineList) {
         List<Object> filteredList = new ArrayList<>();
-        Map<String, PrefsCache.EngineConfig> configs = PrefsCache.getEngineConfigs(appContext);
+        final Map<String, PrefsCache.EngineConfig> configs = PrefsCache.getEngineConfigs(appContext);
 
         for (Object engine : engineList) {
             String key;
@@ -617,7 +668,30 @@ public class SearchEngineHook {
                 filteredList.add(engine);
             }
         }
+
+        // 按用户在管理端拖拽的 order 升序排列
+        java.util.Collections.sort(filteredList, new java.util.Comparator<Object>() {
+            @Override
+            public int compare(Object a, Object b) {
+                return Integer.compare(resolveOrder(a, configs), resolveOrder(b, configs));
+            }
+        });
         return filteredList;
+    }
+
+    private int resolveOrder(Object engine, Map<String, PrefsCache.EngineConfig> configs) {
+        if (engine == null || configs == null) return Integer.MAX_VALUE;
+        PrefsCache.EngineConfig customConfig = (PrefsCache.EngineConfig) XposedHelpers.getAdditionalInstanceField(engine, FIELD_CUSTOM_CONFIG);
+        if (customConfig != null) {
+            PrefsCache.EngineConfig latest = configs.get(customConfig.key);
+            return latest != null ? latest.order : customConfig.order;
+        }
+        String key = getKey(engine);
+        if (key != null) {
+            PrefsCache.EngineConfig cfg = configs.get(key);
+            if (cfg != null) return cfg.order;
+        }
+        return Integer.MAX_VALUE;
     }
 
     private String buildSearchUrl(String template, String query) {

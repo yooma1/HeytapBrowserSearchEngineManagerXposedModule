@@ -1,7 +1,6 @@
 // app/src/main/java/com/upuaut/xposedsearch/ui/DarkWordScreen.kt
 package com.upuaut.xposedsearch.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -9,18 +8,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.extra.SuperSwitch
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.upuaut.xposedsearch.coui.*
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 
 @Composable
 fun DarkWordScreen(
@@ -28,7 +23,6 @@ fun DarkWordScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner) {
@@ -68,13 +62,12 @@ fun DarkWordScreen(
                 .overScrollVertical()
                 .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding() + 12.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+                top = innerPadding.calculateTopPadding() + 8.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 20.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             overscrollEffect = null
         ) {
-            // 启用模块 Card
             item {
                 DarkWordEnableCard(
                     isEnabled = uiState.isModuleEnabled,
@@ -84,12 +77,10 @@ fun DarkWordScreen(
                 )
             }
 
-            // 设置小标题
             item {
-                SmallTitle(text = "设置")
+                SmallTitle(text = "热词策略")
             }
 
-            // 设置 Card
             item {
                 DarkWordSettingsCard(
                     isDarkWordDisabled = uiState.isDarkWordDisabled,
@@ -100,15 +91,18 @@ fun DarkWordScreen(
                 )
             }
 
-//            // 说明
-//            item {
-//                DarkWordInfoCard()
-//            }
+            item {
+                SmallTitle(text = "说明")
+            }
+
+            item {
+                DarkWordInfoCard()
+            }
         }
     }
 }
 
-private val CardPadding = 20.dp
+private val CardHorizontalMargin = 16.dp
 
 @Composable
 private fun DarkWordEnableCard(
@@ -118,21 +112,15 @@ private fun DarkWordEnableCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = CardHorizontalMargin)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(CardPadding)
-        ) {
-            SuperSwitch(
-                title = "启用热词管理",
-                summary = "开启后可控制搜索栏热词显示",
-                checked = isEnabled,
-                onCheckedChange = onEnabledChange,
-                insideMargin = PaddingValues(0.dp)
-            )
-        }
+        SuperSwitch(
+            title = "启用热词管理",
+            summary = "开启后由模块接管浏览器搜索栏底纹热词",
+            checked = isEnabled,
+            onCheckedChange = onEnabledChange,
+            cardListPosition = CardListPosition.Full
+        )
     }
 }
 
@@ -145,45 +133,37 @@ private fun DarkWordSettingsCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = CardHorizontalMargin)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(CardPadding)
-        ) {
-            SuperSwitch(
-                title = "禁用热词显示",
-                summary = "关闭搜索栏的热词推荐",
-                checked = isDarkWordDisabled,
-                onCheckedChange = onDarkWordDisabledChange,
-                enabled = moduleEnabled,
-                insideMargin = PaddingValues(0.dp)
-            )
-        }
+        SuperSwitch(
+            title = "禁用搜索栏热词",
+            summary = "隐藏搜索框内的滚动热门词与运营底纹",
+            checked = isDarkWordDisabled,
+            onCheckedChange = onDarkWordDisabledChange,
+            enabled = moduleEnabled,
+            cardListPosition = CardListPosition.Full
+        )
     }
 }
 
 @Composable
 private fun DarkWordInfoCard() {
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .padding(top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = CardHorizontalMargin)
     ) {
-        Text(
-            text = "说明",
-            style = MiuixTheme.textStyles.headline2,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-
-        Text(
-            text = "• 启用「热词管理」后，模块才会生效\n• 开启「禁用热词显示」可隐藏搜索栏的热门搜索词\n• 修改设置后需要重启浏览器才能生效",
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            style = MiuixTheme.textStyles.body2,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "• 启用「热词管理」后，本页规则才会注入浏览器。\n• 开启「禁用搜索栏热词」可彻底隐藏搜索框内的滚动推荐词。\n• 切换开关后建议在首页点击「强行停止」重启浏览器立即生效。",
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = MiuixTheme.textStyles.body2
+            )
+        }
     }
 }

@@ -1,8 +1,9 @@
-// app/src/main/java/com/upuaut/xposedsearch/hooks/DarkWordHook.java
 package com.upuaut.xposedsearch.hooks;
 
 import android.content.Context;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -17,7 +18,7 @@ public class DarkWordHook {
     private static final String TAG = "XposedSearch";
 
     private Context appContext;
-    private XC_LoadPackage.LoadPackageParam lpparam;
+    private final XC_LoadPackage.LoadPackageParam lpparam;
 
     public DarkWordHook(XC_LoadPackage.LoadPackageParam lpparam) {
         this.lpparam = lpparam;
@@ -29,143 +30,156 @@ public class DarkWordHook {
     }
 
     public void hook() {
-        XposedBridge.log("[" + TAG + "] DarkWordHook: Initializing");
-
-        // Hook 主入口方法
-        hookDarkWordUpdater();
-
-        // Hook 容器类的 getter 方法作为备用
-        hookContainerGetters();
+        hookLegacy();
+        hookNewDarkWordBean();
+        hookNewRepository();
+        hookNewUpdater();
     }
 
-    private void hookDarkWordUpdater() {
+    private boolean shouldBlock() {
+        if (appContext == null) return false;
+        DarkWordPrefsCache.refresh(appContext);
+        return DarkWordPrefsCache.isModuleEnabled() && DarkWordPrefsCache.isDarkWordDisabled();
+    }
+
+    // ===== 兼容旧版 =====
+    private void hookLegacy() {
         try {
-            Class<?> darkWordUpdaterClass = XposedHelpers.findClass(
-                    "com.heytap.browser.search.darkword.n",
-                    lpparam.classLoader
-            );
-
-            XposedHelpers.findAndHookMethod(darkWordUpdaterClass, "w", int.class, new XC_MethodHook() {
+            Class<?> c = XposedHelpers.findClass("com.heytap.browser.search.darkword.n", lpparam.classLoader);
+            XposedBridge.hookAllMethods(c, "w", new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    if (appContext == null) return;
-
-                    DarkWordPrefsCache.refresh(appContext);
-
-                    if (!DarkWordPrefsCache.isModuleEnabled()) return;
-                    if (!DarkWordPrefsCache.isDarkWordDisabled()) return;
-
-                    Object result = param.getResult();
-                    if (result == null) return;
-
-                    // 直接清空返回对象中的热词列表
-                    boolean cleared = clearDarkWordList(result);
-                    if (cleared) {
-                        int scene = (int) param.args[0];
-                        XposedBridge.log("[" + TAG + "] DarkWordHook: Cleared dark words for scene " + scene);
-                    }
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (!shouldBlock()) return;
+                    if (param.getResult() != null) clearDarkWordList(param.getResult());
                 }
             });
+        } catch (Throwable ignored) {}
 
-            XposedBridge.log("[" + TAG + "] DarkWordHook: Hooked n.w()");
+        try {
+            Class<?> c = XposedHelpers.findClass("com.heytap.browser.api.search.page.p", lpparam.classLoader);
+            for (Method m : c.getDeclaredMethods()) {
+                if (m.getReturnType() != List.class || m.getParameterCount() != 0) continue;
+                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (!shouldBlock()) return;
+                        Object r = param.getResult();
+                        if (r instanceof List && !((List<?>) r).isEmpty()) {
+                            Object first = ((List<?>) r).get(0);
+                            if (first != null && first.getClass().getName().contains("DarkWord")) {
+                                ((List<?>) r).clear();
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (Throwable ignored) {}
+    }
 
+    // ===== 新版 DarkWordBean（v40.10.25.2）=====
+    private void hookNewDarkWordBean() {
+        try {
+            Class<?> c = XposedHelpers.findClass(
+                    "com.heytap.browser.api.search.darkword.bean.DarkWordBean", lpparam.classLoader);
+
+            XposedBridge.hookAllMethods(c, "getWordList", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (shouldBlock()) param.setResult(new ArrayList<>());
+                }
+            });
+            XposedBridge.hookAllMethods(c, "hadWords", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (shouldBlock()) param.setResult(false);
+                }
+            });
+            XposedBridge.hookAllMethods(c, "hadDarkWordAd", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (shouldBlock()) param.setResult(false);
+                }
+            });
+            XposedBridge.hookAllMethods(c, "getAvailableHint", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (shouldBlock()) param.setResult("");
+                }
+            });
+            XposedBridge.log("[" + TAG + "] DarkWordBean hooked (v40.10.25.2)");
         } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] DarkWordHook: Failed to hook n.w(): " + t.getMessage());
+            XposedBridge.log("[" + TAG + "] DarkWordBean hook failed: " + t.getMessage());
         }
     }
 
-    private void hookContainerGetters() {
+    private void hookNewRepository() {
         try {
-            // Hook 容器类 p 中返回 List 的方法
-            Class<?> containerClass = XposedHelpers.findClass(
-                    "com.heytap.browser.api.search.page.p",
-                    lpparam.classLoader
-            );
-
-            for (java.lang.reflect.Method method : containerClass.getDeclaredMethods()) {
-                if (method.getReturnType() == List.class && method.getParameterCount() == 0) {
-                    final String methodName = method.getName();
-
-                    XposedHelpers.findAndHookMethod(containerClass, methodName, new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                            if (appContext == null) return;
-
-                            DarkWordPrefsCache.refresh(appContext);
-
-                            if (!DarkWordPrefsCache.isModuleEnabled()) return;
-                            if (!DarkWordPrefsCache.isDarkWordDisabled()) return;
-
-                            Object result = param.getResult();
-                            if (!(result instanceof List)) return;
-
-                            List<?> list = (List<?>) result;
-                            if (list.isEmpty()) return;
-
-                            // 检查是否是 DarkWord 列表
-                            Object firstItem = list.get(0);
-                            if (firstItem != null && firstItem.getClass().getName().contains("DarkWord")) {
-                                list.clear();
-                                XposedBridge.log("[" + TAG + "] DarkWordHook: Cleared list from p." + methodName);
-                            }
-                        }
-                    });
-
-                    XposedBridge.log("[" + TAG + "] DarkWordHook: Hooked p." + methodName);
-                }
+            Class<?> c = XposedHelpers.findClass(
+                    "com.heytap.browser.search.impl.darkword.repository.DarkWordRepository",
+                    lpparam.classLoader);
+            for (Method m : c.getDeclaredMethods()) {
+                if (!"b".equals(m.getName())) continue;
+                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (!shouldBlock()) return;
+                        Object bean = param.getResult();
+                        if (bean == null) return;
+                        try {
+                            XposedHelpers.callMethod(bean, "clearAllItem");
+                        } catch (Throwable ignored) {}
+                        clearDarkWordList(bean);
+                    }
+                });
             }
+            XposedBridge.log("[" + TAG + "] DarkWordRepository hooked");
         } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] DarkWordHook: Failed to hook container: " + t.getMessage());
+            XposedBridge.log("[" + TAG + "] DarkWordRepository hook failed: " + t.getMessage());
         }
+    }
+
+    private void hookNewUpdater() {
+        try {
+            Class<?> c = XposedHelpers.findClass(
+                    "com.heytap.browser.search.impl.darkword.repository.DarkWordUpdater",
+                    lpparam.classLoader);
+            XposedBridge.hookAllMethods(c, "Q0", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (shouldBlock()) param.setResult(false);
+                }
+            });
+        } catch (Throwable ignored) {}
     }
 
     private boolean clearDarkWordList(Object container) {
-        // 尝试多个可能的字段名
-        String[] possibleFields = {"e", "d", "f", "list", "mList", "darkWords"};
-
-        for (String fieldName : possibleFields) {
+        if (container == null) return false;
+        for (String fn : new String[]{"e", "d", "f", "list", "mList", "darkWords", "wordList"}) {
             try {
-                Object fieldValue = XposedHelpers.getObjectField(container, fieldName);
-                if (fieldValue instanceof List) {
-                    List<?> list = (List<?>) fieldValue;
-                    if (!list.isEmpty()) {
-                        // 检查第一个元素是否是 DarkWord 类型
-                        Object first = list.get(0);
-                        if (first != null && first.getClass().getName().contains("DarkWord")) {
-                            list.clear();
-                            XposedBridge.log("[" + TAG + "] DarkWordHook: Cleared field '" + fieldName + "'");
-                            return true;
-                        }
+                Object v = XposedHelpers.getObjectField(container, fn);
+                if (v instanceof List && !((List<?>) v).isEmpty()) {
+                    Object first = ((List<?>) v).get(0);
+                    if (first != null && first.getClass().getName().contains("DarkWord")) {
+                        ((List<?>) v).clear();
+                        return true;
                     }
                 }
-            } catch (Throwable ignored) {
-                // 字段不存在或类型不对，继续尝试下一个
-            }
+            } catch (Throwable ignored) {}
         }
-
-        // 如果上面的方法都失败，尝试遍历所有 List 类型的字段
         try {
-            for (java.lang.reflect.Field field : container.getClass().getDeclaredFields()) {
-                if (List.class.isAssignableFrom(field.getType())) {
-                    field.setAccessible(true);
-                    Object fieldValue = field.get(container);
-                    if (fieldValue instanceof List) {
-                        List<?> list = (List<?>) fieldValue;
-                        if (!list.isEmpty()) {
-                            Object first = list.get(0);
-                            if (first != null && first.getClass().getName().contains("DarkWord")) {
-                                list.clear();
-                                XposedBridge.log("[" + TAG + "] DarkWordHook: Cleared field '" + field.getName() + "' (by reflection)");
-                                return true;
-                            }
-                        }
+            for (java.lang.reflect.Field f : container.getClass().getDeclaredFields()) {
+                if (!List.class.isAssignableFrom(f.getType())) continue;
+                f.setAccessible(true);
+                Object v = f.get(container);
+                if (v instanceof List && !((List<?>) v).isEmpty()) {
+                    Object first = ((List<?>) v).get(0);
+                    if (first != null && first.getClass().getName().contains("DarkWord")) {
+                        ((List<?>) v).clear();
+                        return true;
                     }
                 }
             }
-        } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] DarkWordHook: Reflection failed: " + t.getMessage());
-        }
-
+        } catch (Throwable ignored) {}
         return false;
     }
 }

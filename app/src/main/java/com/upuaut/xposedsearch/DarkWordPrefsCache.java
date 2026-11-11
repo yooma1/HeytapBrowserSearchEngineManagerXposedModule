@@ -16,7 +16,7 @@ public class DarkWordPrefsCache {
     private static final String LOCAL_CACHE_PREF = "xposed_darkword_cache";
 
     private static boolean moduleEnabled = true;
-    private static boolean darkWordDisabled = false;
+    private static boolean darkWordDisabled = true;
 
     private static final long CACHE_TTL_MS = 2000L;
     private static long lastLoadTime = 0L;
@@ -123,7 +123,7 @@ public class DarkWordPrefsCache {
         try {
             SharedPreferences sp = context.getSharedPreferences(LOCAL_CACHE_PREF, Context.MODE_PRIVATE);
             moduleEnabled = sp.getBoolean("moduleEnabled", true);
-            darkWordDisabled = sp.getBoolean("darkWordDisabled", false);
+            darkWordDisabled = sp.getBoolean("darkWordDisabled", true);
             XposedBridge.log("[" + TAG + "] DarkWordPrefs: loaded local moduleEnabled=" + moduleEnabled + ", darkWordDisabled=" + darkWordDisabled);
         } catch (Throwable t) {
             XposedBridge.log("[" + TAG + "] DarkWordPrefs: load local failed: " + t.getMessage());

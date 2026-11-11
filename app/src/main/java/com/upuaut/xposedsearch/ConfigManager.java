@@ -12,7 +12,11 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class ConfigManager {
@@ -44,8 +48,39 @@ public class ConfigManager {
         }
 
         List<SearchEngineConfig> list = fromJson(json);
+        sortByOrder(list);
         Log.d(TAG, "[APP] loadEngines size=" + list.size());
         return list;
+    }
+
+    /** 按 order 升序（未设置过的保持原始相对顺序，稳定排序）。 */
+    public static void sortByOrder(List<SearchEngineConfig> list) {
+        if (list == null) return;
+        Collections.sort(list, new Comparator<SearchEngineConfig>() {
+            @Override
+            public int compare(SearchEngineConfig a, SearchEngineConfig b) {
+                return Integer.compare(a.order, b.order);
+            }
+        });
+    }
+
+    /**
+     * 用户拖动后按新顺序重排并把 order 归一化成 0..n-1。
+     * 内置/自定义分别在各自分组里排序，互不影响。
+     */
+    public static void reorderEngines(Context context, List<String> orderedKeys) {
+        if (context == null || orderedKeys == null || orderedKeys.isEmpty()) return;
+        List<SearchEngineConfig> all = loadEngines(context);
+        if (all == null || all.isEmpty()) return;
+
+        Map<String, Integer> index = new HashMap<>();
+        for (int i = 0; i < orderedKeys.size(); i++) index.put(orderedKeys.get(i), i);
+        int fallback = orderedKeys.size();
+        for (SearchEngineConfig cfg : all) {
+            Integer pos = index.get(cfg.key);
+            cfg.order = (pos != null) ? pos : fallback++;
+        }
+        saveEngines(context, all);
     }
 
     public static void saveEngines(Context context, List<SearchEngineConfig> list) {
@@ -480,6 +515,7 @@ public class ConfigManager {
                     obj.put("hasUpdate", cfg.hasUpdate);
                     if (cfg.pendingName != null) obj.put("pendingName", cfg.pendingName);
                     if (cfg.pendingSearchUrl != null) obj.put("pendingSearchUrl", cfg.pendingSearchUrl);
+                    obj.put("order", cfg.order);
                     obj.put("isRemovedFromBrowser", cfg.isRemovedFromBrowser);
                     obj.put("hasBuiltinConflict", cfg.hasBuiltinConflict);
                     if (cfg.conflictBuiltinName != null) obj.put("conflictBuiltinName", cfg.conflictBuiltinName);
@@ -515,6 +551,7 @@ public class ConfigManager {
                 cfg.hasUpdate = obj.optBoolean("hasUpdate", false);
                 cfg.pendingName = obj.has("pendingName") ? obj.optString("pendingName") : null;
                 cfg.pendingSearchUrl = obj.has("pendingSearchUrl") ? obj.optString("pendingSearchUrl") : null;
+                cfg.order = obj.optInt("order", i);
                 cfg.isRemovedFromBrowser = obj.optBoolean("isRemovedFromBrowser", false);
                 cfg.hasBuiltinConflict = obj.optBoolean("hasBuiltinConflict", false);
                 cfg.conflictBuiltinName = obj.has("conflictBuiltinName") ? obj.optString("conflictBuiltinName") : null;

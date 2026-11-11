@@ -1,4 +1,3 @@
-// app/src/main/java/com/upuaut/xposedsearch/XposedInit.java
 package com.upuaut.xposedsearch;
 
 import android.app.Application;
@@ -14,24 +13,30 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import com.upuaut.xposedsearch.hooks.SearchEngineHook;
 import com.upuaut.xposedsearch.hooks.HotSitesHook;
 import com.upuaut.xposedsearch.hooks.DarkWordHook;
+import com.upuaut.xposedsearch.hooks.BrowserCleanHook;
+import com.upuaut.xposedsearch.hooks.NotificationChannelHook;
+import com.upuaut.xposedsearch.hooks.ErrorPageAdHook;
 
 public class XposedInit implements IXposedHookLoadPackage {
 
     private static final String TAG = "XposedSearch";
     private static final String TARGET_PACKAGE = "com.heytap.browser";
+    private static final String SELF_PACKAGE = "com.upuaut.xposedsearch";
 
     private SearchEngineHook searchEngineHook;
     private HotSitesHook hotSitesHook;
     private DarkWordHook darkWordHook;
+    private BrowserCleanHook browserCleanHook;
+    private NotificationChannelHook notificationChannelHook;
+    private ErrorPageAdHook errorPageAdHook;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
-        if (lpparam.packageName.equals("com.upuaut.xposedsearch")) {
+        if (SELF_PACKAGE.equals(lpparam.packageName)) {
             hookSelf(lpparam);
             return;
         }
-
-        if (!lpparam.packageName.equals(TARGET_PACKAGE)) {
+        if (!TARGET_PACKAGE.equals(lpparam.packageName)) {
             return;
         }
 
@@ -40,43 +45,53 @@ public class XposedInit implements IXposedHookLoadPackage {
         searchEngineHook = new SearchEngineHook(lpparam);
         hotSitesHook = new HotSitesHook(lpparam);
         darkWordHook = new DarkWordHook(lpparam);
+        browserCleanHook = new BrowserCleanHook(lpparam);
+        notificationChannelHook = new NotificationChannelHook(lpparam);
+        errorPageAdHook = new ErrorPageAdHook(lpparam);
 
-        XposedHelpers.findAndHookMethod(
-                Application.class,
-                "onCreate",
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                        Application app = (Application) param.thisObject;
-                        Context appContext = app.getApplicationContext();
-                        XposedBridge.log("[" + TAG + "] Got Application context");
+        XposedHelpers.findAndHookMethod(Application.class, "onCreate", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                Application app = (Application) param.thisObject;
+                Context ctx = app.getApplicationContext();
+                XposedBridge.log("[" + TAG + "] Got Application context");
 
-                        searchEngineHook.setAppContext(appContext);
-                        hotSitesHook.setAppContext(appContext);
-                        darkWordHook.setAppContext(appContext);
-                    }
-                }
-        );
+                searchEngineHook.setAppContext(ctx);
+                hotSitesHook.setAppContext(ctx);
+                darkWordHook.setAppContext(ctx);
+                browserCleanHook.setAppContext(ctx);
+                notificationChannelHook.setAppContext(ctx);
+                errorPageAdHook.setAppContext(ctx);
+                notificationChannelHook.applyExisting(ctx);
+            }
+        });
 
+        safeInit("SearchEngineHook", new Runnable() {
+            public void run() { searchEngineHook.hook(); }
+        });
+        safeInit("HotSitesHook", new Runnable() {
+            public void run() { hotSitesHook.hook(); }
+        });
+        safeInit("DarkWordHook", new Runnable() {
+            public void run() { darkWordHook.hook(); }
+        });
+        safeInit("BrowserCleanHook", new Runnable() {
+            public void run() { browserCleanHook.hook(); }
+        });
+        safeInit("NotificationChannelHook", new Runnable() {
+            public void run() { notificationChannelHook.hook(); }
+        });
+        safeInit("ErrorPageAdHook", new Runnable() {
+            public void run() { errorPageAdHook.hook(); }
+        });
+    }
+
+    private void safeInit(String name, Runnable action) {
         try {
-            searchEngineHook.hook();
-            XposedBridge.log("[" + TAG + "] SearchEngineHook initialized");
+            action.run();
+            XposedBridge.log("[" + TAG + "] " + name + " initialized");
         } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] Failed to init SearchEngineHook: " + t.getMessage());
-        }
-
-        try {
-            hotSitesHook.hook();
-            XposedBridge.log("[" + TAG + "] HotSitesHook initialized");
-        } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] Failed to init HotSitesHook: " + t.getMessage());
-        }
-
-        try {
-            darkWordHook.hook();
-            XposedBridge.log("[" + TAG + "] DarkWordHook initialized");
-        } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] Failed to init DarkWordHook: " + t.getMessage());
+            XposedBridge.log("[" + TAG + "] Failed to init " + name + ": " + t.getMessage());
         }
     }
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
@@ -15,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -23,15 +25,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.extra.SuperArrow
-import top.yukonga.miuix.kmp.extra.SuperSwitch
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.upuaut.xposedsearch.coui.*
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 
 @Composable
 fun HomeScreen(
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     viewModel: MainViewModel = viewModel(),
     onNavigateToEngines: () -> Unit,
     onNavigateToHotSites: () -> Unit,
@@ -64,16 +63,17 @@ fun HomeScreen(
         }
     ) { innerPadding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .scrollEndHaptic()
                 .overScrollVertical()
                 .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding() + 12.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+                top = innerPadding.calculateTopPadding() + 8.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 20.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             overscrollEffect = null
         ) {
             item {
@@ -82,6 +82,22 @@ fun HomeScreen(
                     isCheckingRoot = uiState.isCheckingRoot,
                     isXposedActive = uiState.isXposedActive
                 )
+            }
+
+            item {
+                SmallTitle(text = "功能管理")
+            }
+
+            item {
+                FunctionCard(
+                    onNavigateToEngines = onNavigateToEngines,
+                    onNavigateToHotSites = onNavigateToHotSites,
+                    onNavigateToDarkWord = onNavigateToDarkWord
+                )
+            }
+
+            item {
+                SmallTitle(text = "快捷操作")
             }
 
             item {
@@ -112,21 +128,23 @@ fun HomeScreen(
             }
 
             item {
-                SmallTitle(text = "功能")
+                SmallTitle(text = "浏览器净化")
             }
 
             item {
-                FunctionCard(
-                    onNavigateToEngines = onNavigateToEngines,
-                    onNavigateToHotSites = onNavigateToHotSites,
-                    onNavigateToDarkWord = onNavigateToDarkWord
+                OptTogglesCard(
+                    toggles = uiState.optToggles,
+                    hasRootAccess = uiState.hasRootAccess,
+                    onToggle = { key, enabled -> viewModel.setOptToggle(key, enabled) },
+                    onAllOn = { viewModel.setAllOptToggles(true) },
+                    onAllOff = { viewModel.setAllOptToggles(false) }
                 )
             }
         }
     }
 }
 
-private val CardPadding = 20.dp
+private val CardHorizontalMargin = 16.dp
 
 @Composable
 fun StatusCard(
@@ -137,30 +155,27 @@ fun StatusCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = CardHorizontalMargin)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(CardPadding),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "状态",
-                style = MiuixTheme.textStyles.headline1
-            )
-
             StatusItem(
-                label = "Root 状态",
+                label = "Root 权限",
                 isActive = hasRootAccess,
                 isLoading = isCheckingRoot,
-                activeText = "已获取",
-                inactiveText = "未获取",
+                activeText = "已授权",
+                inactiveText = "未授权",
                 loadingText = "检测中..."
             )
 
+            HorizontalDivider()
+
             StatusItem(
-                label = "Xposed 状态",
+                label = "Xposed 模块",
                 isActive = isXposedActive,
                 isLoading = false,
                 activeText = "已激活",
@@ -180,6 +195,17 @@ private fun StatusItem(
     inactiveText: String,
     loadingText: String
 ) {
+    val badgeBg = when {
+        isLoading -> MiuixTheme.colorScheme.secondaryVariant
+        isActive -> Color(0x1F2E7D32)
+        else -> Color(0x1FC62828)
+    }
+    val badgeFg = when {
+        isLoading -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+        isActive -> Color(0xFF2E7D32)
+        else -> Color(0xFFC62828)
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -187,21 +213,24 @@ private fun StatusItem(
     ) {
         Text(
             text = label,
-            style = MiuixTheme.textStyles.body1
+            style = MiuixTheme.textStyles.body1,
+            color = MiuixTheme.colorScheme.onSurface
         )
 
         Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(badgeBg)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             if (!isLoading) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(7.dp)
                         .clip(CircleShape)
-                        .background(
-                            if (isActive) Color(0xFF4CAF50) else Color(0xFFF44336)
-                        )
+                        .background(badgeFg)
                 )
             }
             Text(
@@ -210,12 +239,9 @@ private fun StatusItem(
                     isActive -> activeText
                     else -> inactiveText
                 },
-                style = MiuixTheme.textStyles.body2,
-                color = when {
-                    isLoading -> MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    isActive -> Color(0xFF4CAF50)
-                    else -> Color(0xFFF44336)
-                }
+                style = MiuixTheme.textStyles.footnote1,
+                color = badgeFg,
+                maxLines = 1
             )
         }
     }
@@ -233,31 +259,25 @@ fun SettingsCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = CardHorizontalMargin)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(CardPadding),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = "设置",
-                style = MiuixTheme.textStyles.headline1
-            )
-
             SuperSwitch(
                 title = "隐藏桌面图标",
-                summary = "隐藏后可通过 LSPosed 打开",
+                summary = "隐藏后可通过 LSPosed 模块页打开",
                 checked = isIconHidden,
                 onCheckedChange = onIconHiddenChange,
-                insideMargin = PaddingValues(0.dp)
+                cardListPosition = CardListPosition.Head
             )
 
-            HorizontalDivider()
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
@@ -279,36 +299,149 @@ fun SettingsCard(
 }
 
 @Composable
+private fun FeatureLeadingIcon(
+    icon: ImageVector,
+    tint: Color,
+    containerColor: Color
+) {
+    Box(
+        modifier = Modifier
+            .padding(end = 12.dp)
+            .size(38.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(containerColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
 fun FunctionCard(
     onNavigateToEngines: () -> Unit,
     onNavigateToHotSites: () -> Unit,
     onNavigateToDarkWord: () -> Unit
 ) {
+    val primary = MiuixTheme.colorScheme.primary
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = CardHorizontalMargin)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
             SuperArrow(
                 title = "搜索引擎",
-                summary = "管理浏览器搜索引擎",
-                onClick = onNavigateToEngines
+                summary = "排序、编辑与添加自定义搜索引擎",
+                onClick = onNavigateToEngines,
+                cardListPosition = CardListPosition.Head,
+                startAction = {
+                    FeatureLeadingIcon(
+                        icon = Icons.Default.Search,
+                        tint = primary,
+                        containerColor = primary.copy(alpha = 0.12f)
+                    )
+                }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 66.dp, end = 16.dp))
 
             SuperArrow(
                 title = "热门网站",
-                summary = "管理首页热门网站",
-                onClick = onNavigateToHotSites
+                summary = "自定义浏览器主页宫格快捷导航",
+                onClick = onNavigateToHotSites,
+                cardListPosition = CardListPosition.Middle,
+                startAction = {
+                    FeatureLeadingIcon(
+                        icon = Icons.Default.Public,
+                        tint = Color(0xFF00897B),
+                        containerColor = Color(0x1F00897B)
+                    )
+                }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 66.dp, end = 16.dp))
 
             SuperArrow(
                 title = "搜索热词",
-                summary = "自定义搜索栏热词或禁用热词",
-                onClick = onNavigateToDarkWord
+                summary = "控制或禁用搜索栏底纹热词推荐",
+                onClick = onNavigateToDarkWord,
+                cardListPosition = CardListPosition.Tail,
+                startAction = {
+                    FeatureLeadingIcon(
+                        icon = Icons.Default.TrendingUp,
+                        tint = Color(0xFFFB8C00),
+                        containerColor = Color(0x1FFB8C00)
+                    )
+                }
             )
+        }
+    }
+}
+
+// ---------------- 净化开关卡片 ----------------
+
+@Composable
+fun OptTogglesCard(
+    toggles: List<OptToggle>,
+    hasRootAccess: Boolean,
+    onToggle: (String, Boolean) -> Unit,
+    onAllOn: () -> Unit = {},
+    onAllOff: () -> Unit = {}
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CardHorizontalMargin)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            toggles.forEachIndexed { index, toggle ->
+                val blocked = toggle.requiresRoot && !hasRootAccess
+                val pos = when {
+                    index == 0 -> CardListPosition.Head
+                    else -> CardListPosition.Middle
+                }
+                SuperSwitch(
+                    title = toggle.title,
+                    summary = when {
+                        blocked -> "${toggle.summary} · 未获取 Root"
+                        else -> toggle.summary
+                    },
+                    checked = toggle.enabled,
+                    onCheckedChange = if (blocked) null else { v -> onToggle(toggle.key, v) },
+                    enabled = !blocked,
+                    cardListPosition = pos
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            }
+
+            // 一键全开 / 全关：COUI 的 TextButton 胶囊按钮，左右各占一半
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TextButton(
+                    text = "一键开启全部",
+                    onClick = onAllOn,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary()
+                )
+                TextButton(
+                    text = "全部关闭",
+                    onClick = onAllOff,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

@@ -29,10 +29,12 @@ public class PrefsCache {
     private static final long CACHE_TTL_MS = 5000L;
     private static long lastLoadTime = 0L;
 
-    // 性能优化：Provider 失败熔断机制
+    // 性能优化：Provider 失败熔断机制（半开重试）
     private static int providerFailureCount = 0;
-    private static final int MAX_FAILURES = 3; // 连续失败3次后不再尝试连接 Provider
-    private static boolean providerCircuitOpen = false; // 熔断器状态
+    private static final int MAX_FAILURES = 3;
+    private static boolean providerCircuitOpen = false;
+    private static long lastCircuitOpenTime = 0L;
+    private static final long CIRCUIT_COOLDOWN_MS = 15000L;
 
     public static class EngineConfig {
         public String key;
@@ -42,11 +44,12 @@ public class PrefsCache {
         public boolean isBuiltin;
         public boolean isRemovedFromBrowser;
         public boolean hasBuiltinConflict;
+        public int order;
 
         public EngineConfig() {}
 
         public EngineConfig(String key, String name, String searchUrl, boolean enabled,
-                            boolean isBuiltin, boolean isRemovedFromBrowser, boolean hasBuiltinConflict) {
+                            boolean isBuiltin, boolean isRemovedFromBrowser, boolean hasBuiltinConflict, int order) {
             this.key = key;
             this.name = name;
             this.searchUrl = searchUrl;
@@ -54,6 +57,7 @@ public class PrefsCache {
             this.isBuiltin = isBuiltin;
             this.isRemovedFromBrowser = isRemovedFromBrowser;
             this.hasBuiltinConflict = hasBuiltinConflict;
+            this.order = order;
         }
     }
 
@@ -68,18 +72,20 @@ public class PrefsCache {
             return memoryCache;
         }
 
-        // 1. 尝试从 ContentProvider 加载 (如果熔断器未开启)
-        if (!providerCircuitOpen) {
+        // 1. 尝试从 ContentProvider 加载 (半开重试)
+        if (!providerCircuitOpen || now - lastCircuitOpenTime >= CIRCUIT_COOLDOWN_MS) {
             if (loadFromProvider(context)) {
                 lastLoadTime = now;
-                providerFailureCount = 0; // 成功一次就重置失败计数
+                providerFailureCount = 0;
+                providerCircuitOpen = false;
                 saveToLocalCache(context);
                 return memoryCache;
             } else {
                 providerFailureCount++;
-                if (providerFailureCount >= MAX_FAILURES) {
+                if (providerFailureCount >= MAX_FAILURES && !providerCircuitOpen) {
                     providerCircuitOpen = true;
-                    XposedBridge.log("[" + TAG + "] PrefsCache: Provider failed " + MAX_FAILURES + " times. Circuit breaker OPEN. Switching to local/memory cache only.");
+                    lastCircuitOpenTime = now;
+                    XposedBridge.log("[" + TAG + "] PrefsCache: Provider failed " + MAX_FAILURES + " times. Circuit OPEN, retry in 15s.");
                 }
             }
         }
@@ -152,6 +158,7 @@ public class PrefsCache {
 
             memoryCache.clear();
 
+            int rowIdx = 0;
             while (cursor.moveToNext()) {
                 String key = cursor.getString(cursor.getColumnIndexOrThrow("key"));
                 String name = cursor.getString(cursor.getColumnIndexOrThrow("name"));
@@ -160,9 +167,12 @@ public class PrefsCache {
                 boolean isBuiltin = cursor.getInt(cursor.getColumnIndexOrThrow("isBuiltin")) == 1;
                 boolean isRemoved = cursor.getInt(cursor.getColumnIndexOrThrow("isRemovedFromBrowser")) == 1;
                 boolean hasConflict = cursor.getInt(cursor.getColumnIndexOrThrow("hasBuiltinConflict")) == 1;
+                int orderCol = cursor.getColumnIndex("order");
+                int order = orderCol >= 0 ? cursor.getInt(orderCol) : rowIdx;
+                rowIdx++;
 
                 memoryCache.put(key, new EngineConfig(key, name, searchUrl, enabled,
-                        isBuiltin, isRemoved, hasConflict));
+                        isBuiltin, isRemoved, hasConflict, order));
             }
 
             XposedBridge.log("[" + TAG + "] Loaded " + memoryCache.size() + " engines from provider");
@@ -208,6 +218,7 @@ public class PrefsCache {
                 editor.putBoolean(prefix + "isBuiltin", config.isBuiltin);
                 editor.putBoolean(prefix + "isRemovedFromBrowser", config.isRemovedFromBrowser);
                 editor.putBoolean(prefix + "hasBuiltinConflict", config.hasBuiltinConflict);
+                editor.putInt(prefix + "order", config.order);
                 index++;
             }
 
@@ -247,6 +258,7 @@ public class PrefsCache {
                 config.isBuiltin = sp.getBoolean(prefix + "isBuiltin", false);
                 config.isRemovedFromBrowser = sp.getBoolean(prefix + "isRemovedFromBrowser", false);
                 config.hasBuiltinConflict = sp.getBoolean(prefix + "hasBuiltinConflict", false);
+                config.order = sp.getInt(prefix + "order", i);
 
                 memoryCache.put(key, config);
             }

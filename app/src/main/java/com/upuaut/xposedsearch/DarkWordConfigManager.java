@@ -1,4 +1,3 @@
-// app/src/main/java/com/upuaut/xposedsearch/DarkWordConfigManager.java
 package com.upuaut.xposedsearch;
 
 import android.content.Context;
@@ -34,8 +33,8 @@ public class DarkWordConfigManager {
     }
 
     public static boolean isDarkWordDisabled(Context context) {
-        if (context == null) return false;
-        return getPrefs(context).getBoolean(KEY_DISABLED, false);
+        if (context == null) return true;
+        return getPrefs(context).getBoolean(KEY_DISABLED, true);
     }
 
     public static void setDarkWordDisabled(Context context, boolean disabled) {
@@ -52,7 +51,6 @@ public class DarkWordConfigManager {
                 prefsDir.setReadable(true, false);
                 prefsDir.setExecutable(true, false);
             }
-
             File prefsFile = new File(prefsDir, PREF_NAME + ".xml");
             if (prefsFile.exists()) {
                 prefsFile.setReadable(true, false);
