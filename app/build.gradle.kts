@@ -23,6 +23,11 @@ android {
         targetSdk = 37
         versionCode = 22
         versionName = "2.0.2-coui"
+
+        // 只保留 arm64-v8a：本模块目标是 COUI(ColorOS 17) 的 64 位 OPPO/OnePlus/Realme 机型
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     // Release 签名：优先读环境变量 / local.properties，缺省回落本机 CI key（可用 ETA_KEYSTORE 覆盖）
@@ -40,8 +45,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8：压缩 + 混淆（Compose/COUI 运行时极大，这里能省下大头）
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        debug {
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

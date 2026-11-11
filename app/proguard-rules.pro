@@ -1,21 +1,36 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ---- Xposed 入口（按名字反射加载，必须保留）----
+-keep class com.upuaut.xposedsearch.XposedInit { *; }
+-keep class com.upuaut.xposedsearch.hooks.** { *; }
+-keep class com.upuaut.xposedsearch.coui.** { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ---- 通过 XposedHelpers 以字符串反射的方法/字段所属类 ----
+-keep class com.upuaut.xposedsearch.ui.MainViewModelKt { *; }
+-keepclassmembers class com.upuaut.xposedsearch.** {
+    public static <fields>;
+}
+-keepnames class com.upuaut.xposedsearch.**
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ---- 全项目：保留枚举、可序列化字段名 ----
+-keepclassmembers enum * { *; }
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ---- Compose 框架 ----
+-dontwarn androidx.compose.**
+-keep class androidx.compose.runtime.** { *; }
+-keep class androidx.compose.ui.platform.** { *; }
+
+# ---- COUI（Compose Multiplatform，含反射查找的 Composable 单例）----
+-keep class io.github.suqi8.coui.kmp.** { *; }
+-dontwarn io.github.suqi8.coui.**
+
+# ---- Kotlin 元数据 ----
+-dontwarn kotlin.**
+-dontwarn kotlinx.**
+-keep class kotlin.Metadata { *; }
+
+# ---- LSPosed / Xposed API 仅在编译期提供 ----
+-dontwarn de.robv.android.xposed.**
+
+# ---- 通用 ----
+-dontwarn org.jetbrains.**
+-dontwarn com.google.**
