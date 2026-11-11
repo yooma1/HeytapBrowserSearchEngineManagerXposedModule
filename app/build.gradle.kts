@@ -25,9 +25,23 @@ android {
         versionName = "2.0.2-coui"
     }
 
+    // Release 签名：优先读环境变量 / local.properties，缺省回落本机 CI key（可用 ETA_KEYSTORE 覆盖）
+    signingConfigs {
+        create("release") {
+            val storePath = (project.findProperty("ETA_KEYSTORE") as String?)
+                ?: System.getenv("ETA_KEYSTORE")
+                ?: "/workspace/keys/heytap.jks"
+            storeFile = file(storePath)
+            storePassword = System.getenv("ETA_KS_PASS") ?: "heytap2026"
+            keyAlias = System.getenv("ETA_KS_ALIAS") ?: "heytap"
+            keyPassword = System.getenv("ETA_KEY_PASS") ?: "heytap2026"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
