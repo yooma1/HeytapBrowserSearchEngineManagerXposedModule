@@ -22,9 +22,7 @@ data class OptToggle(
     val key: String,
     val title: String,
     val summary: String,
-    val enabled: Boolean = true,
-    /** 需要 Root（挂起系统组件类），界面据此显示"需 Root"。 */
-    val requiresRoot: Boolean = false
+    val enabled: Boolean = true
 )
 
 data class MainUiState(
@@ -53,6 +51,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val TARGET_PACKAGE = "com.heytap.browser"
+        /** 与 AppUtils 同一偏好文件，保持一处存储。 */
+        private const val PREF_APP_SETTINGS = "app_settings"
+        /** 历史挂起状态的一次性修复标记，置位后冷启动不再执行恢复流程。 */
+        private const val REPAIR_DONE_KEY = "ad_component_repair_done"
     }
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -167,15 +169,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 事故恢复入口：把保护名单里的系统组件全部解除挂起。
      * 2026-11-11 起不再提供「挂起系统广告组件」开关——pm suspend com.opos.ads
      * 会让应用管理 / 权限页 / 第三方 App 点击白屏并触发 system_server watchdog 重启。
+     *
+     * 2026-11-12：改为一次性迁移。历史版本可能留下 suspended 状态，只在首次升级后
+     * 跑一次恢复，成功后写入 REPAIR_DONE_KEY，之后冷启动不再 fork 任何 shell。
      */
     fun restoreSystemComponents() {
         if (!_uiState.value.hasRootAccess) return
+        val prefs = context.getSharedPreferences(PREF_APP_SETTINGS, android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean(REPAIR_DONE_KEY, false)) return
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isTogglingAds = true)
             val restored = withContext(Dispatchers.IO) {
                 AdComponentController.restoreCriticalPackages()
             }
             android.util.Log.d("XposedSearch", "restoreSystemComponents -> " + restored)
+            // 无论是否有包被恢复，本次检查已完成，标记后不再重复
+            prefs.edit().putBoolean(REPAIR_DONE_KEY, true).apply()
             _uiState.value = _uiState.value.copy(
                 isTogglingAds = false,
                 adComponentsSuspended = false
@@ -199,24 +209,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkRootStatus() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isCheckingRoot = true)
+            // 静默探测：无 root 设备不会产生 su 进程，也不弹授权窗
             val hasRoot = withContext(Dispatchers.IO) {
-                RootUtils.checkRootAccess()
+                RootUtils.detectRootQuietly()
             }
             _uiState.value = _uiState.value.copy(
                 hasRootAccess = hasRoot,
                 isCheckingRoot = false
             )
+            // restoreSystemComponents 内部已做 REPAIR_DONE_KEY 一次性判断，
+            // 冷启动不会重复 fork 32 次 dumpsys
             if (hasRoot) restoreSystemComponents()
         }
     }
 
     fun forceStopBrowser(): Boolean {
-        if (!_uiState.value.hasRootAccess) return false
-
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isForceStoppingBrowser = true)
             withContext(Dispatchers.IO) {
-                RootUtils.forceStopApp(TARGET_PACKAGE)
+                if (RootUtils.hasRootCached() || RootUtils.detectRootQuietly()) {
+                    RootUtils.forceStopApp(TARGET_PACKAGE)
+                } else {
+                    // 无 root 降级：只能结束后台进程；浏览器在前台时系统会忽略，但不报错、不弹窗
+                    try {
+                        val am = context.getSystemService(
+                            android.content.Context.ACTIVITY_SERVICE
+                        ) as android.app.ActivityManager
+                        am.killBackgroundProcesses(TARGET_PACKAGE)
+                    } catch (e: Exception) {
+                        android.util.Log.w("XposedSearch", "killBackgroundProcesses failed", e)
+                    }
+                }
             }
             _uiState.value = _uiState.value.copy(isForceStoppingBrowser = false)
         }

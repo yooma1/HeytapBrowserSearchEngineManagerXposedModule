@@ -103,7 +103,6 @@ fun HomeScreen(
             item {
                 SettingsCard(
                     isIconHidden = uiState.isIconHidden,
-                    hasRootAccess = uiState.hasRootAccess,
                     isForceStoppingBrowser = uiState.isForceStoppingBrowser,
                     onIconHiddenChange = { hidden ->
                         if (hidden) {
@@ -114,12 +113,13 @@ fun HomeScreen(
                         }
                     },
                     onForceStop = {
-                        val success = viewModel.forceStopBrowser()
-                        if (success) {
-                            Toast.makeText(context, "浏览器已强制停止", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "需要 Root 权限", Toast.LENGTH_SHORT).show()
-                        }
+                        viewModel.forceStopBrowser()
+                        val viaRoot = uiState.hasRootAccess
+                        Toast.makeText(
+                            context,
+                            if (viaRoot) "浏览器已强制停止" else "已请求系统结束后台进程",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     },
                     onOpenBrowser = {
                         viewModel.openBrowser()
@@ -134,7 +134,6 @@ fun HomeScreen(
             item {
                 OptTogglesCard(
                     toggles = uiState.optToggles,
-                    hasRootAccess = uiState.hasRootAccess,
                     onToggle = { key, enabled -> viewModel.setOptToggle(key, enabled) },
                     onAllOn = { viewModel.setAllOptToggles(true) },
                     onAllOff = { viewModel.setAllOptToggles(false) }
@@ -168,7 +167,7 @@ fun StatusCard(
                 isActive = hasRootAccess,
                 isLoading = isCheckingRoot,
                 activeText = "已授权",
-                inactiveText = "未授权",
+                inactiveText = "未使用",
                 loadingText = "检测中..."
             )
 
@@ -250,7 +249,6 @@ private fun StatusItem(
 @Composable
 fun SettingsCard(
     isIconHidden: Boolean,
-    hasRootAccess: Boolean,
     isForceStoppingBrowser: Boolean,
     onIconHiddenChange: (Boolean) -> Unit,
     onForceStop: () -> Unit,
@@ -283,7 +281,7 @@ fun SettingsCard(
                 TextButton(
                     text = if (isForceStoppingBrowser) "停止中..." else "强行停止",
                     onClick = onForceStop,
-                    enabled = hasRootAccess && !isForceStoppingBrowser,
+                    enabled = !isForceStoppingBrowser,
                     modifier = Modifier.weight(1f)
                 )
 
@@ -390,7 +388,6 @@ fun FunctionCard(
 @Composable
 fun OptTogglesCard(
     toggles: List<OptToggle>,
-    hasRootAccess: Boolean,
     onToggle: (String, Boolean) -> Unit,
     onAllOn: () -> Unit = {},
     onAllOff: () -> Unit = {}
@@ -404,20 +401,16 @@ fun OptTogglesCard(
             modifier = Modifier.fillMaxWidth()
         ) {
             toggles.forEachIndexed { index, toggle ->
-                val blocked = toggle.requiresRoot && !hasRootAccess
                 val pos = when {
                     index == 0 -> CardListPosition.Head
                     else -> CardListPosition.Middle
                 }
                 SuperSwitch(
                     title = toggle.title,
-                    summary = when {
-                        blocked -> "${toggle.summary} · 未获取 Root"
-                        else -> toggle.summary
-                    },
+                    summary = toggle.summary,
                     checked = toggle.enabled,
-                    onCheckedChange = if (blocked) null else { v -> onToggle(toggle.key, v) },
-                    enabled = !blocked,
+                    onCheckedChange = { v -> onToggle(toggle.key, v) },
+                    enabled = true,
                     cardListPosition = pos
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

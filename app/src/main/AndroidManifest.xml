@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.upuaut.xposedsearch">
 
+    <!-- 无 root 时「强行停止」的降级通道；normal 权限，安装即授予，不弹窗 -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+
     <queries>
         <package android:name="com.heytap.browser" />
     </queries>
