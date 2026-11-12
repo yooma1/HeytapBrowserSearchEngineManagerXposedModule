@@ -21,8 +21,8 @@ android {
         applicationId = "com.upuaut.xposedsearch"
         minSdk = 33
         targetSdk = 37
-        versionCode = 23
-        versionName = "2.0.3-coui"
+        versionCode = 24
+        versionName = "2.0.4-coui"
 
         // 只保留 arm64-v8a：本模块目标是 COUI(ColorOS 17) 的 64 位 OPPO/OnePlus/Realme 机型
         ndk {

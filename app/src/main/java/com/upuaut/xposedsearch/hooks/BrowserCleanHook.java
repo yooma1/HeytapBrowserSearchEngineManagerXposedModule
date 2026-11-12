@@ -299,6 +299,7 @@ public class BrowserCleanHook {
 
     // ---------------- 6. 下载广告 ----------------
     private void hookDownloadAds() {
+        // 6.1 下载管理页（DownloadManagerFragment / NewDownloadManagerFragment）底部「大家还下载了 / 精品游戏推荐」
         try {
             Class<?> c = XposedHelpers.findClass(
                     "com.heytap.browser.download.ui.downloadlist.model.RecommendConfig", lpparam.classLoader);
@@ -314,49 +315,311 @@ public class BrowserCleanHook {
             XposedBridge.log("[" + TAG + "] RecommendConfig hook failed: " + describe(t));
         }
 
+        // 拦截 DownloadManagerAdapter (ah1.b0) 的 f0()，开启去广告时直接不添加底部推荐 ViewType(6)
+        try {
+            Class<?> adapterCls = XposedHelpers.findClass("ah1.b0", lpparam.classLoader);
+            for (Method m : adapterCls.getDeclaredMethods()) {
+                if ("f0".equals(m.getName()) && m.getParameterCount() == 0 && m.getReturnType() == int.class) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            BrowserOptPrefsCache.refresh(appContext);
+                            if (!BrowserOptPrefsCache.isRemoveDownloadBottomAd()) return;
+                            try {
+                                Boolean hasCleanUp = (Boolean) XposedHelpers.callMethod(param.thisObject, "F0");
+                                param.setResult(Boolean.TRUE.equals(hasCleanUp) ? 1 : 0);
+                            } catch (Throwable t) {
+                                param.setResult(0);
+                            }
+                        }
+                    });
+                }
+            }
+            // 修正 A0/B0/C0/z0：当 f0() 返回 1（即仅保留清理缓存卡片 F0()）时，末尾项应为 ViewType 5 而非推荐项 6
+            XC_MethodHook fixBottomViewTypeHook = new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (!Integer.valueOf(6).equals(param.getResult())) return;
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadBottomAd()) {
+                        param.setResult(5);
+                    }
+                }
+            };
+            for (String mName : new String[]{"A0", "B0", "C0", "z0"}) {
+                XposedBridge.hookAllMethods(adapterCls, mName, fixBottomViewTypeHook);
+            }
+            try {
+                Class<?> newAdapterCls = XposedHelpers.findClass("ah1.f0", lpparam.classLoader);
+                for (String mName : new String[]{"A0", "H0"}) {
+                    XposedBridge.hookAllMethods(newAdapterCls, mName, fixBottomViewTypeHook);
+                }
+            } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {}
+
+        // 拦截 AppRecommendManager (fh1.i) 构造及内部数据请求与视图展示（注意真实字段名是 b/f/i/j，不是 JADX 装饰名 f20527i）
         try {
             Class<?> c = XposedHelpers.findClass("fh1.i", lpparam.classLoader);
+            XposedBridge.hookAllConstructors(c, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (!BrowserOptPrefsCache.isRemoveDownloadBottomAd()) return;
+                    try {
+                        XposedHelpers.setBooleanField(param.thisObject, "i", true);
+                        XposedHelpers.setBooleanField(param.thisObject, "j", true);
+                        Object bottom = XposedHelpers.getObjectField(param.thisObject, "f");
+                        if (bottom instanceof View) ((View) bottom).setVisibility(View.GONE);
+                        Object root = XposedHelpers.getObjectField(param.thisObject, "b");
+                        if (root instanceof View) {
+                            View rv = (View) root;
+                            rv.setVisibility(View.GONE);
+                            android.view.ViewGroup.LayoutParams lp = rv.getLayoutParams();
+                            if (lp != null) {
+                                lp.width = 0;
+                                lp.height = 0;
+                                rv.setLayoutParams(lp);
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            });
             XC_MethodHook hideHook = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     BrowserOptPrefsCache.refresh(appContext);
                     if (!BrowserOptPrefsCache.isRemoveDownloadBottomAd()) return;
                     try {
-                        XposedHelpers.setBooleanField(param.thisObject, "f20527i", true);
-                        XposedHelpers.setBooleanField(param.thisObject, "f20528j", true);
-                        Object bottom = XposedHelpers.getObjectField(param.thisObject, "f20524f");
+                        XposedHelpers.setBooleanField(param.thisObject, "i", true);
+                        XposedHelpers.setBooleanField(param.thisObject, "j", true);
+                        Object bottom = XposedHelpers.getObjectField(param.thisObject, "f");
                         if (bottom instanceof View) ((View) bottom).setVisibility(View.GONE);
-                        Object root = XposedHelpers.getObjectField(param.thisObject, "f20520b");
+                        Object root = XposedHelpers.getObjectField(param.thisObject, "b");
                         if (root instanceof View) ((View) root).setVisibility(View.GONE);
                     } catch (Throwable ignored) {}
                     param.setResult(null);
                 }
             };
+            XposedBridge.hookAllMethods(c, "s", hideHook);
             XposedBridge.hookAllMethods(c, "F", hideHook);
             XposedBridge.hookAllMethods(c, "C", hideHook);
             XposedBridge.hookAllMethods(c, "t", hideHook);
+            XposedBridge.hookAllMethods(c, "B", hideHook);
         } catch (Throwable ignored) {}
 
+        // 移除 DownloadManagerFragment.H7 返回 null 的潜在风险，改为保留实例但隐藏其根视图 p()
+        // （若任何路径仍调用 H7().p() 传入 bh1.c.b(view, host)，避免 s.f(view) 非空断言崩溃）
+
+        // 拦截大家还下载了（fh1.g / ApiRecommendStrategy）与游戏推荐（fh1.m / fh1.n）及底层 Provider（iv1.f / iv1.j）
+        for (String strategyCls : new String[]{"fh1.g", "fh1.m", "fh1.n"}) {
+            try {
+                Class<?> c = XposedHelpers.findClass(strategyCls, lpparam.classLoader);
+                XposedBridge.hookAllMethods(c, "b", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        BrowserOptPrefsCache.refresh(appContext);
+                        if (BrowserOptPrefsCache.isRemoveDownloadBottomAd()) param.setResult(null);
+                    }
+                });
+                XposedBridge.hookAllMethods(c, "a", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        BrowserOptPrefsCache.refresh(appContext);
+                        if (BrowserOptPrefsCache.isRemoveDownloadBottomAd()) param.setResult(null);
+                    }
+                });
+                XposedBridge.hookAllMethods(c, "b2", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        BrowserOptPrefsCache.refresh(appContext);
+                        if (BrowserOptPrefsCache.isRemoveDownloadBottomAd()) param.setResult(true);
+                    }
+                });
+            } catch (Throwable ignored) {}
+        }
+
         try {
-            Class<?> c = XposedHelpers.findClass("iv1.d", lpparam.classLoader);
+            Class<?> c = XposedHelpers.findClass("iv1.f", lpparam.classLoader);
             XposedBridge.hookAllMethods(c, "g", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     BrowserOptPrefsCache.refresh(appContext);
-                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(null);
+                    if (BrowserOptPrefsCache.isRemoveDownloadBottomAd()) param.setResult(null);
                 }
             });
-            XposedBridge.hookAllMethods(c, "q", new XC_MethodHook() {
+        } catch (Throwable ignored) {}
+
+        try {
+            Class<?> c = XposedHelpers.findClass("iv1.j", lpparam.classLoader);
+            XposedBridge.hookAllMethods(c, "e", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadBottomAd()) param.setResult(null);
+                }
+            });
+        } catch (Throwable ignored) {}
+
+        // 6.2 下载确认弹窗（DownloadCard）内的「官方推荐 / 安全下载劫持」与底部「大家还下载了」广告
+        try {
+            Class<?> c = XposedHelpers.findClass("iv1.d", lpparam.classLoader);
+            XC_MethodHook blockAdProvider = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(null);
+                }
+            };
+            XposedBridge.hookAllMethods(c, "g", blockAdProvider);
+            XposedBridge.hookAllMethods(c, "q", blockAdProvider);
+            XposedBridge.hookAllMethods(c, "m", blockAdProvider);
+            XposedBridge.log("[" + TAG + "] Download dialog ad hooked (iv1.d)");
+        } catch (Throwable t) {
+            XposedBridge.log("[" + TAG + "] Download dialog ad hook failed: " + describe(t));
+        }
+
+        // 拦截 DownloadCardController 的广告推荐开关与占位骨架屏（U0 / I0 / e / i）
+        try {
+            Class<?> ctrlCls = XposedHelpers.findClass(
+                    "com.heytap.browser.download.create.card.controller.DownloadCardController",
+                    lpparam.classLoader);
+            XposedBridge.hookAllMethods(ctrlCls, "U0", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(false);
+                }
+            });
+            XposedBridge.hookAllMethods(ctrlCls, "I0", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (!BrowserOptPrefsCache.isRemoveDownloadDialogAd()) return;
+                    try {
+                        XposedHelpers.setBooleanField(param.thisObject, "l", true);
+                        XposedHelpers.setBooleanField(param.thisObject, "m", false);
+                    } catch (Throwable ignored) {}
+                    param.setResult(false);
+                }
+            });
+            XposedBridge.hookAllMethods(ctrlCls, "i", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     BrowserOptPrefsCache.refresh(appContext);
                     if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(null);
                 }
             });
-            XposedBridge.log("[" + TAG + "] Download dialog ad hooked (iv1.d)");
-        } catch (Throwable t) {
-            XposedBridge.log("[" + TAG + "] Download dialog ad hook failed: " + describe(t));
-        }
+        } catch (Throwable ignored) {}
+
+        // 拦截 BaseDownloadAdStrategy (og1.d.p) 与 DownloadCardData (lg1.a) / MarketDownloadData (lg1.b)
+        // 阻止向服务端请求「官方推荐 / 猜你想下 / 相关应用推荐」卡片劫持，直接走干净的普通文件下载卡片
+        try {
+            Class<?> strategyCls = XposedHelpers.findClass("og1.d", lpparam.classLoader);
+            XposedBridge.hookAllMethods(strategyCls, "p", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (!BrowserOptPrefsCache.isRemoveDownloadDialogAd()) return;
+                    if (param.args.length < 1 || param.args[0] == null) return;
+                    try {
+                        Object callback = param.args[0];
+                        XposedHelpers.setBooleanField(param.thisObject, "e", true);
+                        Object download = XposedHelpers.callMethod(param.thisObject, "u");
+                        if (download != null) {
+                            Object apkIntercept = XposedHelpers.callMethod(download, "j");
+                            if (apkIntercept != null) {
+                                Class<?> interceptEnum = XposedHelpers.findClass(
+                                        "com.heytap.browser.api.download.ability.entity.Intercept",
+                                        lpparam.classLoader);
+                                Object noIntercept = Enum.valueOf((Class<Enum>) interceptEnum, "NO_INTERCEPT");
+                                XposedHelpers.setObjectField(apkIntercept, "a", noIntercept);
+                            }
+                        }
+                        Object cardData = XposedHelpers.callMethod(param.thisObject, "t");
+                        if (cardData != null) {
+                            XposedHelpers.callMethod(cardData, "L", false);
+                        }
+                        XposedHelpers.callMethod(callback, "a", cardData, 0, false);
+                        param.setResult(null);
+                    } catch (Throwable t) {
+                        XposedBridge.log("[" + TAG + "] og1.d.p shortcut failed: " + describe(t));
+                    }
+                }
+            });
+        } catch (Throwable ignored) {}
+
+        try {
+            Class<?> cardDataCls = XposedHelpers.findClass("lg1.a", lpparam.classLoader);
+            XposedBridge.hookAllMethods(cardDataCls, "p", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(false);
+                }
+            });
+        } catch (Throwable ignored) {}
+
+        try {
+            Class<?> marketDataCls = XposedHelpers.findClass("lg1.b", lpparam.classLoader);
+            for (String mName : new String[]{"z", "n", "j"}) {
+                XposedBridge.hookAllMethods(marketDataCls, mName, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        BrowserOptPrefsCache.refresh(appContext);
+                        if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(false);
+                    }
+                });
+            }
+        } catch (Throwable ignored) {}
+
+        // 拦截 BaseDownloadCard (com.heytap.browser.download.create.card.view.g) 的 M0() 广告占位与 f0() 官方推荐卡片标记
+        try {
+            Class<?> baseCardCls = XposedHelpers.findClass(
+                    "com.heytap.browser.download.create.card.view.g", lpparam.classLoader);
+            XposedBridge.hookAllMethods(baseCardCls, "M0", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(null);
+                }
+            });
+            XposedBridge.hookAllMethods(baseCardCls, "f0", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(false);
+                }
+            });
+        } catch (Throwable ignored) {}
+
+        // 拦截 DownloadUtils (com.heytap.browser.download.utils.b0) 的商店推荐弹窗调用链与 StoreRecommendDownloadCard (z0)
+        try {
+            Class<?> utilsCls = XposedHelpers.findClass(
+                    "com.heytap.browser.download.utils.b0", lpparam.classLoader);
+            XC_MethodHook blockStoreRecommendHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(null);
+                }
+            };
+            for (String mName : new String[]{"J", "k0", "h0", "n0", "g0"}) {
+                XposedBridge.hookAllMethods(utilsCls, mName, blockStoreRecommendHook);
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            Class<?> storeCardCls = XposedHelpers.findClass(
+                    "com.heytap.browser.download.create.card.view.z0", lpparam.classLoader);
+            XposedBridge.hookAllMethods(storeCardCls, "v", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    BrowserOptPrefsCache.refresh(appContext);
+                    if (BrowserOptPrefsCache.isRemoveDownloadDialogAd()) param.setResult(false);
+                }
+            });
+        } catch (Throwable ignored) {}
+
         XposedBridge.log("[" + TAG + "] DownloadAd hooks installed");
     }
 

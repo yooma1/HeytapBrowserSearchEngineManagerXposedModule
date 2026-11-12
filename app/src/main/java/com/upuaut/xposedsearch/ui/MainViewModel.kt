@@ -105,12 +105,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "标签页上限提升到 999"
             ),
             OptToggle(
-                BrowserOptConfigManager.KEY_REMOVE_DOWNLOAD_BOTTOM_AD, "移除下载页底部广告",
-                "隐藏下载列表底部推荐位"
+                BrowserOptConfigManager.KEY_REMOVE_DOWNLOAD_BOTTOM_AD, "移除下载页底部推荐",
+                "隐藏下载管理页「大家还下载了 / 游戏推荐」"
             ),
             OptToggle(
-                BrowserOptConfigManager.KEY_REMOVE_DOWNLOAD_DIALOG_AD, "移除下载对话框广告",
-                "下载确认弹窗内不再插入推荐"
+                BrowserOptConfigManager.KEY_REMOVE_DOWNLOAD_DIALOG_AD, "移除下载弹窗官方推荐与广告",
+                "跳过应用商店官方推荐替换与弹窗底部推广"
             ),
             OptToggle(
                 BrowserOptConfigManager.KEY_DISABLE_NEWS_FEED, "关闭资讯流 / 热榜",
