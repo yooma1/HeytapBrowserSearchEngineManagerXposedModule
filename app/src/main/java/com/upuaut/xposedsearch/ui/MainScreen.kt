@@ -694,7 +694,10 @@ fun UpdateAvailableDialog(
         onDismissRequest = onDismiss
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = "浏览器中的 \"${engine.name}\" 有更新：",
@@ -703,7 +706,7 @@ fun UpdateAvailableDialog(
 
             Surface(
                 color = MiuixTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Text(
                     text = engine.updateDescription,
@@ -711,24 +714,16 @@ fun UpdateAvailableDialog(
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                 )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "忽略",
-                    onClick = onIgnore,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "应用更新",
-                    onClick = onApply,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "忽略",
+            onNegativeClick = onIgnore,
+            positiveText = "应用更新",
+            onPositiveClick = onApply
+        )
     }
 }
 
@@ -746,30 +741,25 @@ fun EngineRemovedDialog(
         onDismissRequest = onDismiss
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = "\"${engine.name}\" 已不再是浏览器的内置引擎。\n\n你可以将其转为自定义引擎继续使用，或者删除它。",
                 color = MiuixTheme.colorScheme.onSurface
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "删除",
-                    onClick = onDelete,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "转为自定义",
-                    onClick = onConvertToCustom,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "删除",
+            onNegativeClick = onDelete,
+            positiveText = "转为自定义",
+            onPositiveClick = onConvertToCustom
+        )
     }
 }
 
@@ -787,7 +777,10 @@ fun BuiltinConflictDialog(
         onDismissRequest = onDismiss
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = "浏览器新增了标识符同为「${engine.key}」的内置引擎。",
@@ -796,7 +789,7 @@ fun BuiltinConflictDialog(
 
             Surface(
                 color = MiuixTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(12.dp),
@@ -828,24 +821,16 @@ fun BuiltinConflictDialog(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 style = MiuixTheme.textStyles.body2
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "转为内置",
-                    onClick = onConvertToBuiltin,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "创建副本",
-                    onClick = onCreateCopy,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "转为内置",
+            onNegativeClick = onConvertToBuiltin,
+            positiveText = "创建副本",
+            onPositiveClick = onCreateCopy
+        )
     }
 }
 
@@ -880,6 +865,9 @@ fun AddEngineDialog(
         onDismissRequest = onDismiss
     ) {
         Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             TextField(
@@ -928,47 +916,37 @@ fun AddEngineDialog(
             if (urlError != null) {
                 Text(text = urlError!!, color = Color(0xFFF44336))
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "取消",
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "添加",
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = {
-                        var hasError = false
-                        if (key.isBlank()) {
-                            keyError = "标识符不能为空"
-                            hasError = true
-                        }
-                        if (name.isBlank()) {
-                            nameError = "名称不能为空"
-                            hasError = true
-                        }
-                        if (url.isBlank()) {
-                            urlError = "URL不能为空"
-                            hasError = true
-                        } else if (!url.contains("%s") && !url.contains("{searchTerms}")) {
-                            urlError = "URL必须包含 %s 或 {searchTerms}"
-                            hasError = true
-                        }
-
-                        if (!hasError) {
-                            onConfirm(key.trim(), name.trim(), url.trim())
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "添加",
+            onPositiveClick = {
+                var hasError = false
+                if (key.isBlank()) {
+                    keyError = "标识符不能为空"
+                    hasError = true
+                }
+                if (name.isBlank()) {
+                    nameError = "名称不能为空"
+                    hasError = true
+                }
+                if (url.isBlank()) {
+                    urlError = "URL不能为空"
+                    hasError = true
+                } else if (!url.contains("%s") && !url.contains("{searchTerms}")) {
+                    urlError = "URL必须包含 %s 或 {searchTerms}"
+                    hasError = true
+                }
+
+                if (!hasError) {
+                    onConfirm(key.trim(), name.trim(), url.trim())
+                }
+            }
+        )
     }
 }
 
@@ -995,6 +973,9 @@ fun EditEngineDialog(
         onDismissRequest = onDismiss
     ) {
         Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (isBuiltin) {
@@ -1003,9 +984,9 @@ fun EditEngineDialog(
                         .fillMaxWidth()
                         .background(
                             color = MiuixTheme.colorScheme.disabledSecondaryVariant,
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(10.dp)
                         )
-                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     Column {
                         Text(
@@ -1013,7 +994,7 @@ fun EditEngineDialog(
                             style = MiuixTheme.textStyles.body2,
                             color = MiuixTheme.colorScheme.disabledOnSecondaryVariant
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = engine.key,
                             style = MiuixTheme.textStyles.body1,
@@ -1062,43 +1043,33 @@ fun EditEngineDialog(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "取消",
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "保存",
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = {
-                        var hasError = false
-
-                        if (!isBuiltin && key.isBlank()) {
-                            keyError = "标识符不能为空"
-                            hasError = true
-                        }
-
-                        if (name.isBlank()) {
-                            nameError = "名称不能为空"
-                            hasError = true
-                        }
-
-                        if (!hasError) {
-                            val finalKey = if (isBuiltin) engine.key else key.trim()
-                            onConfirm(finalKey, name.trim(), url.trim())
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "保存",
+            onPositiveClick = {
+                var hasError = false
+
+                if (!isBuiltin && key.isBlank()) {
+                    keyError = "标识符不能为空"
+                    hasError = true
+                }
+
+                if (name.isBlank()) {
+                    nameError = "名称不能为空"
+                    hasError = true
+                }
+
+                if (!hasError) {
+                    val finalKey = if (isBuiltin) engine.key else key.trim()
+                    onConfirm(finalKey, name.trim(), url.trim())
+                }
+            }
+        )
     }
 }
 
@@ -1115,29 +1086,24 @@ fun DeleteConfirmDialog(
         onDismissRequest = onDismiss
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = "确定要删除 \"$engineName\" 吗？",
                 color = MiuixTheme.colorScheme.onSurface
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "取消",
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "删除",
-                    onClick = onConfirm,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "删除",
+            onPositiveClick = onConfirm
+        )
     }
 }

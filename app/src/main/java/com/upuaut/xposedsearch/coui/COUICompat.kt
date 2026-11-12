@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -49,6 +52,8 @@ import io.github.suqi8.coui.kmp.basic.TextField as CouiTextField
 import io.github.suqi8.coui.kmp.basic.TopAppBar as CouiTopAppBar
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.ArrowRight
+import io.github.suqi8.coui.kmp.layout.DialogButtonBar as CouiDialogButtonBar
+import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.theme.ColorSchemeMode
@@ -433,7 +438,11 @@ fun SuperArrow(
 
 /**
  * COUI 对话框（底部滑入 / 大屏居中）。
- * 保持 `show` 为 MutableState，与既有调用点一致。
+ *
+ * 注意：COUI 的 [OverlayDialog] 仅自动给 title 设置了 `insideMargin`（24dp），
+ * 对 `content` 槽位不加任何内边距，以便底部的 [CouiDialogButtonBar] 可以全宽渲染并自动带
+ * `ButtonBarInsideMargin`（24, 12, 24, 22）与居中竖向细分割线。
+ * 因此这里将表单/正文包裹在水平 24dp、顶部 12dp 的内边距容器中，底部留给 [DialogButtonBar]。
  */
 @Composable
 fun SuperDialog(
@@ -451,7 +460,39 @@ fun SuperDialog(
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.height(8.dp))
             content()
         }
     }
+}
+
+/**
+ * COUI 原生对话框底部操作栏（[CouiDialogButtonBar]）：
+ * - 左右无边框文字按钮（`textButtonColorsBorderless`）+ 中间原生竖向分割线；
+ * - 文本过长时自动切换为上下堆叠按钮栏（`StackedButtonBar`）；
+ * - 自带标准 `PaddingValues(start = 24.dp, top = 12.dp, end = 24.dp, bottom = 22.dp)`，无需外层再包 padding。
+ */
+@Composable
+fun DialogButtonBar(
+    negativeText: String,
+    onNegativeClick: () -> Unit,
+    positiveText: String,
+    onPositiveClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    negativeEnabled: Boolean = true,
+    positiveEnabled: Boolean = true,
+) {
+    CouiDialogButtonBar(
+        negative = DialogButtonBarAction(
+            text = negativeText,
+            enabled = negativeEnabled,
+            onClick = onNegativeClick,
+        ),
+        positive = DialogButtonBarAction(
+            text = positiveText,
+            enabled = positiveEnabled,
+            onClick = onPositiveClick,
+        ),
+        modifier = modifier,
+    )
 }

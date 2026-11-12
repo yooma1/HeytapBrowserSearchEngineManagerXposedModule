@@ -510,7 +510,7 @@ fun DraggableHotSiteItem(
     }
 }
 
-// Dialogs 保持不变...
+// Dialogs（统一使用 ColorOS 17 原生 24dp 水平内边距 + 底部 DialogButtonBar）
 @Composable
 fun AddHotSiteDialog(
     show: MutableState<Boolean>,
@@ -536,7 +536,12 @@ fun AddHotSiteDialog(
         show = show,
         onDismissRequest = onDismiss
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             TextField(
                 value = name,
                 onValueChange = { name = it; nameError = null },
@@ -571,27 +576,21 @@ fun AddHotSiteDialog(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(text = "取消", onClick = onDismiss, modifier = Modifier.weight(1f))
-                TextButton(
-                    text = "添加",
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = {
-                        var hasError = false
-                        if (name.isBlank()) { nameError = "名称不能为空"; hasError = true }
-                        if (url.isBlank()) { urlError = "URL不能为空"; hasError = true }
-                        if (!hasError) onConfirm(name.trim(), url.trim(), iconUrl.trim())
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "添加",
+            onPositiveClick = {
+                var hasError = false
+                if (name.isBlank()) { nameError = "名称不能为空"; hasError = true }
+                if (url.isBlank()) { urlError = "URL不能为空"; hasError = true }
+                if (!hasError) onConfirm(name.trim(), url.trim(), iconUrl.trim())
+            }
+        )
     }
 }
 
@@ -614,7 +613,12 @@ fun EditHotSiteDialog(
         show = show,
         onDismissRequest = onDismiss
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             TextField(
                 value = name,
                 onValueChange = { name = it; nameError = null },
@@ -649,27 +653,21 @@ fun EditHotSiteDialog(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(text = "取消", onClick = onDismiss, modifier = Modifier.weight(1f))
-                TextButton(
-                    text = "保存",
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = {
-                        var hasError = false
-                        if (name.isBlank()) { nameError = "名称不能为空"; hasError = true }
-                        if (url.isBlank()) { urlError = "URL不能为空"; hasError = true }
-                        if (!hasError) onConfirm(name.trim(), url.trim(), iconUrl.trim())
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "保存",
+            onPositiveClick = {
+                var hasError = false
+                if (name.isBlank()) { nameError = "名称不能为空"; hasError = true }
+                if (url.isBlank()) { urlError = "URL不能为空"; hasError = true }
+                if (!hasError) onConfirm(name.trim(), url.trim(), iconUrl.trim())
+            }
+        )
     }
 }
 
@@ -685,25 +683,26 @@ fun DeleteHotSiteDialog(
         show = show,
         onDismissRequest = onDismiss
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Text(
                 text = "确定要删除 \"$siteName\" 吗？",
                 color = MiuixTheme.colorScheme.onSurface
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(text = "取消", onClick = onDismiss, modifier = Modifier.weight(1f))
-                TextButton(
-                    text = "删除",
-                    onClick = onConfirm,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "删除",
+            onPositiveClick = onConfirm
+        )
     }
 }
 
@@ -718,24 +717,25 @@ fun ResetToDefaultDialog(
         show = show,
         onDismissRequest = onDismiss
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Text(
                 text = "确定要恢复为浏览器默认的热门网站吗？\n\n你的自定义设置将被清除。",
                 color = MiuixTheme.colorScheme.onSurface
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(text = "取消", onClick = onDismiss, modifier = Modifier.weight(1f))
-                TextButton(
-                    text = "恢复默认",
-                    onClick = onConfirm,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DialogButtonBar(
+            negativeText = "取消",
+            onNegativeClick = onDismiss,
+            positiveText = "恢复默认",
+            onPositiveClick = onConfirm
+        )
     }
 }
