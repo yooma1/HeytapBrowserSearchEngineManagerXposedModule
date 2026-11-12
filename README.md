@@ -38,3 +38,8 @@
 
 - 原项目基础：[Asstiff/HeytapBrowserSearchEngineManagerXposedModule](https://github.com/Asstiff/HeytapBrowserSearchEngineManagerXposedModule)
 - UI 组件库：[suqi8/coui](https://github.com/suqi8/coui)
+
+## 开源协议
+
+本项目许可证正式切换为 **GPL-3.0**（GNU General Public License v3.0），详情请参阅 [LICENSE](LICENSE)。
+
